@@ -1,0 +1,1841 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>PLAAI Group — แดชบอร์ดวิเคราะห์ผลประกอบการ</title>
+
+<!-- ============ CONFIG : ค่าเชื่อมต่อ Supabase ============
+     anon key ตัวนี้เปิดเผยได้ เพราะสิทธิ์ทั้งหมดถูกบังคับด้วย RLS ฝั่งฐานข้อมูล
+     ผู้ที่ไม่ได้ login จะอ่านอะไรไม่ได้เลยแม้จะมี key นี้
+     ================================================================ -->
+<script>
+  window.PLAAI_CONFIG = {
+    SUPABASE_URL:"https://yxsrwiqikkkbkygaomvk.supabase.co",
+    SUPABASE_ANON_KEY:"sb_publishable_XmayHlYELy2Ar_6AeB5cMg_FvmQnNeH"
+  };
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- ไลบรารี: โหลดจากโฟลเดอร์ assets/ ในเครื่องก่อน ถ้าไม่มีจึงค่อยไป CDN
+     (วิธีนี้ทำให้เปิดใช้งานได้แม้เน็ตห้องประชุมบล็อก cdn.jsdelivr.net) -->
+<script src="assets/chart.umd.min.js"></script>
+<script>window.Chart||document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"><\/script>');</script>
+<script src="assets/xlsx.full.min.js"></script>
+<script>window.XLSX||document.write('<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>');</script>
+<script src="assets/supabase.js"></script>
+<script>window.supabase||document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"><\/script>');</script>
+
+<style>
+:root{
+  --bg:#eef2f7; --panel:#ffffff; --ink:#0f2033; --ink-soft:#5b6b7c; --ink-mute:#8592a0;
+  --line:#e5eaf1; --line-strong:#d3dbe6;
+  --brand:#0f2c44; --brand-2:#1f4e5f; --gold:#8a6d1b;
+  --pos:#0f7a52; --neg:#b23a2e; --neutral:#6c7a88;
+  --pos-bg:rgba(15,122,82,.10); --neg-bg:rgba(178,58,46,.10); --neu-bg:rgba(108,122,136,.12);
+  --accent:#1f4e5f;
+  --radius:14px;
+  --shadow:0 1px 2px rgba(16,32,51,.05), 0 6px 20px rgba(16,32,51,.06);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Sarabun','Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  background:var(--bg);color:var(--ink);line-height:1.55;-webkit-font-smoothing:antialiased;
+  font-feature-settings:'tnum';overflow-x:hidden;}
+button{font-family:inherit;cursor:pointer;}
+input,select{font-family:inherit;}
+.hidden{display:none !important;}
+:focus-visible{outline:3px solid #2563EB;outline-offset:2px;}
+
+/* ---------- LOGIN ---------- */
+#login{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#0f2c44 0%,#1f4e5f 100%);z-index:100;padding:20px;overflow-y:auto;}
+.login-card{background:#fff;border-radius:20px;padding:38px 34px;width:100%;max-width:390px;
+  box-shadow:0 24px 60px rgba(0,0,0,.3);text-align:center;}
+.login-card .logo{font-size:26px;font-weight:700;color:var(--brand);letter-spacing:-.5px;}
+.login-card .logo span{color:#b8912f;}
+.login-card .sub{font-size:12.5px;color:var(--ink-mute);margin:6px 0 26px;}
+.txt-input{width:100%;font-size:15px;padding:13px 14px;border:2px solid var(--line-strong);
+  border-radius:12px;color:var(--brand);font-weight:500;margin-bottom:12px;}
+.txt-input::placeholder{color:var(--ink-mute);font-weight:400;}
+.txt-input:focus{outline:none;border-color:var(--brand-2);}
+.field-lbl{text-align:left;font-size:11.5px;font-weight:600;color:var(--ink-mute);margin:0 0 5px 2px;}
+.login-btn{width:100%;margin-top:16px;background:var(--brand);color:#fff;border:none;
+  padding:14px;border-radius:12px;font-size:15px;font-weight:600;transition:.15s;}
+.login-btn:hover{background:var(--brand-2);}
+.login-btn[disabled]{opacity:.55;cursor:progress;}
+.login-err{font-size:13px;margin-top:12px;min-height:18px;color:var(--neg);line-height:1.5;}
+.login-err.info{color:var(--ink-mute);}
+.login-hint{font-size:11px;color:var(--ink-mute);margin-top:22px;line-height:1.7;text-align:left;
+  background:#f6f8fb;border-radius:10px;padding:12px 14px;}
+
+/* ---------- TOPBAR ---------- */
+.topbar{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:40;
+  display:flex;align-items:center;flex-wrap:wrap;gap:10px 16px;padding:8px clamp(12px,2.4vw,40px);
+  min-height:60px;box-shadow:0 1px 3px rgba(16,32,51,.04);}
+.topbar .brand{font-size:19px;font-weight:700;color:var(--brand);letter-spacing:-.3px;white-space:nowrap;}
+.topbar .brand span{color:#b8912f;}
+.mode-tabs{display:flex;flex-wrap:wrap;gap:4px;}
+.mode-tabs button{background:transparent;border:none;padding:9px 15px;border-radius:9px;font-size:13.5px;
+  font-weight:600;color:var(--ink-soft);}
+.mode-tabs button.active{background:var(--brand);color:#fff;}
+.mode-tabs button:not(.active):hover{background:#f0f3f8;}
+.topbar .spacer{flex:1;min-width:0;}
+.user-chip{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink-soft);}
+.user-chip .who{font-weight:600;color:var(--ink);}
+.user-chip .role-badge{font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:20px;
+  background:var(--neu-bg);color:var(--neutral);}
+.role-badge.edit{background:var(--pos-bg);color:var(--pos);}
+.btn-ghost{background:#f0f3f8;border:1px solid var(--line);color:var(--ink-soft);padding:7px 13px;
+  border-radius:9px;font-size:12.5px;font-weight:600;}
+.btn-ghost:hover{background:#e7ecf3;}
+.env-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;letter-spacing:.5px;}
+.env-cloud{background:var(--pos-bg);color:var(--pos);}
+.env-local{background:#fef3cd;color:#7a5f12;}
+
+.wrap{width:100%;max-width:1760px;margin:0 auto;padding:22px clamp(12px,2.4vw,40px) 64px;}
+
+/* ---------- CONTROL BAR ---------- */
+.controls{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;
+  margin-bottom:18px;box-shadow:var(--shadow);display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;}
+.ctl{display:flex;flex-direction:column;gap:5px;}
+.ctl label{font-size:11px;font-weight:600;color:var(--ink-mute);text-transform:uppercase;letter-spacing:.5px;}
+.ctl select,.ctl input{border:1px solid var(--line-strong);border-radius:9px;padding:8px 11px;font-size:13px;
+  color:var(--ink);background:#fff;min-width:120px;font-weight:500;}
+.ctl select:focus,.ctl input:focus{outline:none;border-color:var(--accent);}
+.seg{display:flex;background:#f0f3f8;border-radius:9px;padding:3px;}
+.seg button{background:transparent;border:none;padding:7px 13px;border-radius:7px;font-size:12.5px;
+  font-weight:600;color:var(--ink-soft);}
+.seg button.active{background:#fff;color:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.08);}
+
+/* แถบเตือนช่วงเวลาที่ใช้เปรียบเทียบจริง */
+.scope-note{display:flex;align-items:flex-start;gap:9px;background:#f1f6fb;border:1px solid #d7e5f2;
+  border-left:4px solid var(--brand-2);border-radius:10px;padding:10px 14px;margin-bottom:16px;
+  font-size:12.5px;color:#31556e;line-height:1.6;}
+.scope-note.warn{background:#fdf5f4;border-color:#f0d5d1;border-left-color:var(--neg);color:#8a352b;}
+.scope-note b{font-weight:700;}
+
+/* hotel tabs */
+.hotel-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;}
+.hotel-tabs button{background:#fff;border:1px solid var(--line);border-radius:30px;padding:8px 16px;
+  font-size:13px;font-weight:600;color:var(--ink-soft);display:flex;align-items:center;gap:8px;transition:.15s;}
+.hotel-tabs button .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.hotel-tabs button.active{border-color:transparent;}
+.hotel-tabs button.nodata{opacity:.55;}
+
+/* ---------- HEADER BANNER ---------- */
+.page-header{position:relative;overflow:hidden;padding:26px 30px;border-radius:16px;margin-bottom:18px;
+  box-shadow:0 10px 28px rgba(15,44,68,.20);}
+.page-header::after{content:"";position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,rgba(255,255,255,.6),transparent 55%);}
+.page-header .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;
+  opacity:.9;margin-bottom:9px;}
+.page-header h1{font-size:clamp(22px,2vw,30px);font-weight:700;letter-spacing:-.2px;margin-bottom:5px;}
+.page-header p{font-size:clamp(12.5px,1vw,15px);opacity:.9;}
+
+/* ---------- KPI ---------- */
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin-bottom:20px;}
+.kpi-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;
+  box-shadow:var(--shadow);position:relative;overflow:hidden;}
+.kpi-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent);}
+.kpi-card.hl{background:linear-gradient(180deg,#fbfcfe,#f4f8fb);}
+.kpi-label{font-size:12.5px;color:var(--ink-mute);font-weight:600;margin-bottom:7px;}
+.kpi-value{font-size:clamp(24px,1.9vw,32px);font-weight:700;color:var(--ink);letter-spacing:-.5px;line-height:1.1;}
+.kpi-sub{font-size:12px;color:var(--ink-mute);margin-top:3px;}
+.kpi-change{font-size:12px;font-weight:600;margin-top:8px;display:inline-flex;align-items:center;gap:4px;
+  padding:3px 8px;border-radius:20px;}
+.kpi-change.positive{color:var(--pos);background:var(--pos-bg);}
+.kpi-change.negative{color:var(--neg);background:var(--neg-bg);}
+.kpi-change.neutral{color:var(--neutral);background:var(--neu-bg);}
+.kpi-flag{display:block;font-size:11px;color:#8a6d1b;margin-top:7px;line-height:1.45;}
+
+/* ---------- PANELS / CHARTS ---------- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-bottom:18px;}
+@media(max-width:1200px){.grid3{grid-template-columns:1fr 1fr;}}
+@media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr;}}
+.panel{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;box-shadow:var(--shadow);}
+.panel h3{font-size:15.5px;font-weight:700;color:var(--ink);margin-bottom:4px;}
+.panel .cap{font-size:12px;color:var(--ink-mute);margin-bottom:16px;}
+.chart-box{position:relative;height:clamp(300px,32vh,400px);}
+.chart-box.tall{height:clamp(340px,38vh,460px);}
+.chart-missing{display:flex;align-items:center;justify-content:center;height:100%;background:#f6f8fb;
+  border:1px dashed var(--line-strong);border-radius:10px;color:var(--ink-mute);font-size:13px;text-align:center;padding:20px;}
+.bridge-strip{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:6px 0 14px;
+  background:#f6f8fb;border:1px solid var(--line);border-radius:12px;padding:14px 16px;}
+.bridge-strip .bpill{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 14px;
+  display:flex;flex-direction:column;gap:1px;min-width:130px;}
+.bridge-strip .bpill.neg{border-color:var(--neg);background:var(--neg-bg);}
+.bridge-strip .bpill.pos{border-color:var(--pos);background:var(--pos-bg);}
+.bridge-strip .bl{font-size:11px;color:var(--ink-mute);font-weight:600;}
+.bridge-strip .bv{font-size:17px;font-weight:700;color:var(--ink);letter-spacing:-.3px;}
+.bridge-strip .bop{font-size:20px;font-weight:700;color:var(--ink-soft);}
+.bridge-strip .bnote{flex:1;min-width:180px;font-size:11.5px;color:var(--ink-mute);line-height:1.5;}
+
+/* ---------- TABLE ---------- */
+.table-scroll{overflow-x:auto;border-radius:12px;border:1px solid var(--line);}
+table.data{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap;}
+table.data th,table.data td{padding:10px 14px;border-bottom:1px solid var(--line);text-align:right;}
+table.data thead th{background:#f6f8fb;color:var(--ink-soft);font-weight:600;font-size:11.5px;
+  position:sticky;top:0;z-index:2;}
+table.data td.lbl,table.data th.lbl{text-align:left;font-weight:600;color:var(--ink);
+  position:sticky;left:0;background:#fff;z-index:1;}
+table.data thead th.lbl{background:#f6f8fb;z-index:3;}
+table.data tr:hover td{background:#fafbfd;}
+table.data tr:hover td.lbl{background:#fafbfd;}
+table.data tfoot td{font-weight:700;background:#f6f8fb;border-top:2px solid var(--line-strong);}
+table.data td.na{color:var(--ink-mute);}
+.delta.up{color:var(--pos);font-weight:600;} .delta.down{color:var(--neg);font-weight:600;}
+.delta.flat{color:var(--neutral);font-weight:600;}
+.grp-head td{background:var(--brand);color:#fff;font-weight:700;text-align:left;font-size:11.5px;
+  letter-spacing:.3px;}
+.tbl-note{font-size:11.5px;color:var(--ink-mute);margin-top:10px;line-height:1.6;}
+
+/* ---------- INSIGHTS ---------- */
+.insights{display:grid;grid-template-columns:1fr;gap:12px;}
+.insight{background:#fff;border:1px solid var(--line);border-left:4px solid var(--neutral);
+  border-radius:12px;padding:14px 18px;box-shadow:var(--shadow);}
+.insight.good{border-left-color:var(--pos);}
+.insight.warn{border-left-color:var(--neg);}
+.insight.neutral{border-left-color:var(--gold);}
+.insight.info{border-left-color:var(--brand-2);}
+.insight .ttl{font-size:13.5px;font-weight:700;color:var(--ink);margin-bottom:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.insight .badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.4px;}
+.badge.good{background:var(--pos-bg);color:var(--pos);}
+.badge.warn{background:var(--neg-bg);color:var(--neg);}
+.badge.neutral{background:rgba(138,109,27,.15);color:#6f570f;}
+.badge.info{background:var(--neu-bg);color:var(--brand-2);}
+.insight .body{font-size:13px;color:var(--ink-soft);line-height:1.65;}
+.insight .tools{margin-top:10px;display:flex;gap:8px;}
+.insight .tools button{font-size:11.5px;padding:4px 10px;}
+.section-title{display:flex;align-items:center;justify-content:space-between;margin:24px 0 12px;}
+.section-title h2{font-size:clamp(16px,1.4vw,20px);font-weight:700;color:var(--ink);}
+.section-title .line{flex:1;height:1px;background:var(--line);margin:0 14px;}
+
+.btn{border:none;border-radius:9px;font-size:13px;font-weight:600;padding:9px 15px;}
+.btn-primary{background:var(--brand);color:#fff;} .btn-primary:hover{background:var(--brand-2);}
+.btn-accent{background:var(--accent);color:#fff;}
+.btn-soft{background:#f0f3f8;color:var(--ink-soft);border:1px solid var(--line);}
+.btn-soft:hover{background:#e7ecf3;}
+.btn-danger{background:var(--neg-bg);color:var(--neg);}
+.btn-sm{padding:6px 11px;font-size:12px;}
+.btn[disabled]{opacity:.5;cursor:not-allowed;}
+
+/* ---------- DATA ENTRY ---------- */
+.entry-grid input{width:92px;border:1px solid var(--line);border-radius:6px;padding:6px 7px;font-size:12px;text-align:right;}
+.entry-grid input:focus{outline:none;border-color:var(--accent);background:#fafcff;}
+.entry-grid input.calc{background:#f6f8fb;color:var(--ink-soft);}
+.entry-grid input.bad{border-color:var(--neg);background:#fdf3f2;}
+.entry-grid td.lbl{min-width:70px;}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;}
+.toolbar .spacer{flex:1;}
+.check-strip{font-size:12.5px;padding:10px 14px;border-radius:10px;margin-bottom:14px;line-height:1.6;}
+.check-strip.ok{background:var(--pos-bg);color:#0b5c3e;border:1px solid rgba(15,122,82,.25);}
+.check-strip.bad{background:var(--neg-bg);color:#8a352b;border:1px solid rgba(178,58,46,.25);}
+
+/* ---------- MODAL ---------- */
+.modal-bg{position:fixed;inset:0;background:rgba(15,32,51,.5);display:flex;align-items:center;justify-content:center;
+  z-index:80;padding:20px;}
+.modal{background:#fff;border-radius:16px;padding:26px;width:100%;max-width:520px;box-shadow:0 24px 60px rgba(0,0,0,.3);
+  max-height:88vh;overflow-y:auto;}
+.modal h3{font-size:17px;font-weight:700;margin-bottom:16px;color:var(--ink);}
+.field{margin-bottom:14px;} .field label{display:block;font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;}
+.field input,.field select,.field textarea{width:100%;border:1px solid var(--line-strong);border-radius:9px;
+  padding:9px 11px;font-size:13.5px;color:var(--ink);}
+.field textarea{min-height:96px;resize:vertical;line-height:1.6;}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent);}
+.field .hint{font-size:11px;color:var(--ink-mute);margin-top:4px;font-weight:400;}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;}
+.chips{display:flex;flex-wrap:wrap;gap:8px;}
+.chips label{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;color:var(--ink-soft);
+  background:#f6f8fb;border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer;}
+
+/* settings list */
+.list-row{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 14px;border:1px solid var(--line);
+  border-radius:11px;margin-bottom:9px;background:#fff;}
+.list-row .dot{width:14px;height:14px;border-radius:50%;flex-shrink:0;}
+.list-row .grow{flex:1;min-width:200px;}
+.list-row .nm{font-weight:600;font-size:14px;}
+.list-row .meta{font-size:11.5px;color:var(--ink-mute);}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
+  padding:12px 22px;border-radius:30px;font-size:13.5px;font-weight:500;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.25);
+  opacity:0;transition:.25s;pointer-events:none;max-width:90vw;text-align:center;}
+.toast.show{opacity:1;}
+.empty{text-align:center;color:var(--ink-mute);font-size:13.5px;padding:30px;line-height:1.8;}
+
+/* ---------- PRINT / PDF ---------- */
+@media print{
+  @page{size:A4 landscape;margin:12mm;}
+  .topbar,.controls,.mode-tabs,.hotel-tabs,.btn,.btn-ghost,.insight .tools,.noprint{display:none !important;}
+  body{background:#fff;}
+  .wrap{padding:0;max-width:none;}
+  .panel,.insight,.kpi-card,.bridge-strip,.scope-note{
+    break-inside:avoid;page-break-inside:avoid;box-shadow:none;border-color:#ccd5df;}
+  .page-header{break-after:avoid;page-break-after:avoid;box-shadow:none;}
+  .section-title{break-after:avoid;page-break-after:avoid;}
+  .chart-box{height:300px;}
+  .table-scroll{overflow:visible;}
+  table.data{font-size:10.5px;}
+  table.data th,table.data td{padding:5px 7px;}
+  table.data thead th,table.data td.lbl{position:static;}
+}
+</style>
+</head>
+
+<body>
+
+<!-- ================= LOGIN ================= -->
+<div id="login">
+  <div class="login-card">
+    <div class="logo">PLAAI <span>Group</span></div>
+    <div class="sub">แดชบอร์ดวิเคราะห์ผลประกอบการ · P&amp;L</div>
+    <div class="field-lbl">ชื่อผู้ใช้ (Username)</div>
+    <input id="uname" class="txt-input" type="text" placeholder="เช่น owner, account, prime" autocomplete="username" autocapitalize="off" spellcheck="false">
+    <div class="field-lbl">รหัสผ่าน (Password)</div>
+    <input id="pin" class="txt-input" type="password" placeholder="••••••••" autocomplete="current-password">
+    <button class="login-btn" id="loginBtn">เข้าสู่ระบบ</button>
+    <div id="loginErr" class="login-err" role="status" aria-live="polite"></div>
+    <div class="login-hint" id="loginHint"></div>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="app" class="hidden">
+  <div class="topbar">
+    <div class="brand">PLAAI <span>Group</span></div>
+    <div class="mode-tabs" id="modeTabs"></div>
+    <div class="spacer"></div>
+    <span id="envBadge" class="env-badge"></span>
+    <div class="user-chip">
+      <span class="who" id="userName"></span>
+      <span class="role-badge" id="roleBadge"></span>
+    </div>
+    <button class="btn-ghost" id="btnLogout">ออกจากระบบ</button>
+  </div>
+  <div class="wrap" id="view"></div>
+</div>
+
+<div id="modalHost"></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   PLAAI Group — แดชบอร์ดวิเคราะห์ผลประกอบการ
+   ปรับปรุง: ส.ค. 2026 (แก้ 14 จุดจากรายงานตรวจสอบ)
+   ============================================================ */
+
+/* ------------------------------------------------------------------
+   ข้อมูลสาธิตสำหรับโหมด LOCAL (ใช้เมื่อยังไม่ได้ตั้งค่า Supabase เท่านั้น)
+
+   ⚠ ตัวเลขในชุดนี้เป็น "ข้อมูลสมมติทั้งหมด" ไม่ใช่ผลประกอบการจริง
+     ห้ามนำข้อมูลจริงมาใส่ตรงนี้เด็ดขาด เพราะไฟล์ index.html เปิดอ่านได้
+     จากเบราว์เซอร์ของทุกคนที่เข้าถึงเว็บนี้ (View Source) โดยไม่ต้องล็อกอิน
+     ข้อมูลจริงต้องอยู่ในฐานข้อมูลที่ป้องกันด้วย RLS เท่านั้น
+   ------------------------------------------------------------------ */
+const SEED = {"hotels":[{"id":"h_demo1","code":"demo1","name":"โรงแรมตัวอย่าง A","color":"#1F4E5F","sort_order":1,"active":true},{"id":"h_demo2","code":"demo2","name":"โรงแรมตัวอย่าง B","color":"#7C3AED","sort_order":2,"active":true}],"pl":[{"hotel_id":"h_demo1","year":2025,"month":1,"rooms_rev":2000000.0,"fb_rev":440000.0,"other_rev":60000.0,"total_rev":2500000.0,"rooms_exp":400000.0,"fb_exp":300000.0,"other_dept_exp":25000.0,"ag_exp":350000.0,"sale_exp":75000.0,"maint_exp":100000.0,"util_exp":150000.0,"total_exp":1400000.0,"gop":1100000.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":750000.0,"occ":78.0,"adr":900.0,"revpar":702.0,"commission":50000.0},{"hotel_id":"h_demo1","year":2025,"month":2,"rooms_rev":2120000.0,"fb_rev":466400.0,"other_rev":63600.0,"total_rev":2650000.0,"rooms_exp":424000.0,"fb_exp":318000.0,"other_dept_exp":26500.0,"ag_exp":371000.0,"sale_exp":79500.0,"maint_exp":106000.0,"util_exp":159000.0,"total_exp":1484000.0,"gop":1166000.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":816000.0,"occ":78.5,"adr":900.0,"revpar":706.3,"commission":53000.0},{"hotel_id":"h_demo1","year":2025,"month":3,"rooms_rev":1880000.0,"fb_rev":413600.0,"other_rev":56400.0,"total_rev":2350000.0,"rooms_exp":376000.0,"fb_exp":282000.0,"other_dept_exp":23500.0,"ag_exp":329000.0,"sale_exp":70500.0,"maint_exp":94000.0,"util_exp":141000.0,"total_exp":1316000.0,"gop":1034000.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":684000.0,"occ":77.5,"adr":900.0,"revpar":697.7,"commission":47000.0},{"hotel_id":"h_demo1","year":2025,"month":4,"rooms_rev":2000000.0,"fb_rev":440000.0,"other_rev":60000.0,"total_rev":2500000.0,"rooms_exp":400000.0,"fb_exp":300000.0,"other_dept_exp":25000.0,"ag_exp":350000.0,"sale_exp":75000.0,"maint_exp":100000.0,"util_exp":150000.0,"total_exp":1400000.0,"gop":1100000.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":750000.0,"occ":78.0,"adr":900.0,"revpar":702.0,"commission":50000.0},{"hotel_id":"h_demo1","year":2025,"month":5,"rooms_rev":2120000.0,"fb_rev":466400.0,"other_rev":63600.0,"total_rev":2650000.0,"rooms_exp":424000.0,"fb_exp":318000.0,"other_dept_exp":26500.0,"ag_exp":371000.0,"sale_exp":79500.0,"maint_exp":106000.0,"util_exp":159000.0,"total_exp":1484000.0,"gop":1166000.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":816000.0,"occ":78.5,"adr":900.0,"revpar":706.3,"commission":53000.0},{"hotel_id":"h_demo1","year":2025,"month":6,"rooms_rev":1880000.0,"fb_rev":413600.0,"other_rev":56400.0,"total_rev":2350000.0,"rooms_exp":376000.0,"fb_exp":282000.0,"other_dept_exp":23500.0,"ag_exp":329000.0,"sale_exp":70500.0,"maint_exp":94000.0,"util_exp":141000.0,"total_exp":1316000.0,"gop":1034000.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":684000.0,"occ":77.5,"adr":900.0,"revpar":697.7,"commission":47000.0},{"hotel_id":"h_demo1","year":2026,"month":1,"rooms_rev":2160000.0,"fb_rev":475200.0,"other_rev":64800.0,"total_rev":2700000.0,"rooms_exp":432000.0,"fb_exp":324000.0,"other_dept_exp":27000.0,"ag_exp":378000.0,"sale_exp":81000.0,"maint_exp":108000.0,"util_exp":162000.0,"total_exp":1512000.0,"gop":1188000.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":838000.0,"occ":78.6,"adr":972.0,"revpar":764.4,"commission":54000.0},{"hotel_id":"h_demo1","year":2026,"month":2,"rooms_rev":2289600.0,"fb_rev":503700.0,"other_rev":68700.0,"total_rev":2862000.0,"rooms_exp":457900.0,"fb_exp":343400.0,"other_dept_exp":28600.0,"ag_exp":400700.0,"sale_exp":85900.0,"maint_exp":114500.0,"util_exp":171700.0,"total_exp":1602700.0,"gop":1259300.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":909300.0,"occ":79.2,"adr":972.0,"revpar":769.4,"commission":57200.0},{"hotel_id":"h_demo1","year":2026,"month":3,"rooms_rev":2030400.0,"fb_rev":446700.0,"other_rev":60900.0,"total_rev":2538000.0,"rooms_exp":406100.0,"fb_exp":304600.0,"other_dept_exp":25400.0,"ag_exp":355300.0,"sale_exp":76100.0,"maint_exp":101500.0,"util_exp":152300.0,"total_exp":1421300.0,"gop":1116700.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":766700.0,"occ":78.1,"adr":972.0,"revpar":759.3,"commission":50800.0},{"hotel_id":"h_demo1","year":2026,"month":4,"rooms_rev":2160000.0,"fb_rev":475200.0,"other_rev":64800.0,"total_rev":2700000.0,"rooms_exp":432000.0,"fb_exp":324000.0,"other_dept_exp":27000.0,"ag_exp":378000.0,"sale_exp":81000.0,"maint_exp":108000.0,"util_exp":162000.0,"total_exp":1512000.0,"gop":1188000.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":838000.0,"occ":78.6,"adr":972.0,"revpar":764.4,"commission":54000.0},{"hotel_id":"h_demo1","year":2026,"month":5,"rooms_rev":2289600.0,"fb_rev":503700.0,"other_rev":68700.0,"total_rev":2862000.0,"rooms_exp":457900.0,"fb_exp":343400.0,"other_dept_exp":28600.0,"ag_exp":400700.0,"sale_exp":85900.0,"maint_exp":114500.0,"util_exp":171700.0,"total_exp":1602700.0,"gop":1259300.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":909300.0,"occ":79.2,"adr":972.0,"revpar":769.4,"commission":57200.0},{"hotel_id":"h_demo1","year":2026,"month":6,"rooms_rev":2030400.0,"fb_rev":446700.0,"other_rev":60900.0,"total_rev":2538000.0,"rooms_exp":406100.0,"fb_exp":304600.0,"other_dept_exp":25400.0,"ag_exp":355300.0,"sale_exp":76100.0,"maint_exp":101500.0,"util_exp":152300.0,"total_exp":1421300.0,"gop":1116700.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":766700.0,"occ":78.1,"adr":972.0,"revpar":759.3,"commission":50800.0},{"hotel_id":"h_demo2","year":2025,"month":1,"rooms_rev":1200000.0,"fb_rev":264000.0,"other_rev":36000.0,"total_rev":1500000.0,"rooms_exp":240000.0,"fb_exp":180000.0,"other_dept_exp":15000.0,"ag_exp":210000.0,"sale_exp":45000.0,"maint_exp":60000.0,"util_exp":90000.0,"total_exp":840000.0,"gop":660000.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":310000.0,"occ":78.0,"adr":900.0,"revpar":702.0,"commission":30000.0},{"hotel_id":"h_demo2","year":2025,"month":2,"rooms_rev":1272000.0,"fb_rev":279800.0,"other_rev":38200.0,"total_rev":1590000.0,"rooms_exp":254400.0,"fb_exp":190800.0,"other_dept_exp":15900.0,"ag_exp":222600.0,"sale_exp":47700.0,"maint_exp":63600.0,"util_exp":95400.0,"total_exp":890400.0,"gop":699600.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":349600.0,"occ":78.5,"adr":900.0,"revpar":706.3,"commission":31800.0},{"hotel_id":"h_demo2","year":2025,"month":3,"rooms_rev":1128000.0,"fb_rev":248200.0,"other_rev":33800.0,"total_rev":1410000.0,"rooms_exp":225600.0,"fb_exp":169200.0,"other_dept_exp":14100.0,"ag_exp":197400.0,"sale_exp":42300.0,"maint_exp":56400.0,"util_exp":84600.0,"total_exp":789600.0,"gop":620400.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":270400.0,"occ":77.5,"adr":900.0,"revpar":697.7,"commission":28200.0},{"hotel_id":"h_demo2","year":2025,"month":4,"rooms_rev":1200000.0,"fb_rev":264000.0,"other_rev":36000.0,"total_rev":1500000.0,"rooms_exp":240000.0,"fb_exp":180000.0,"other_dept_exp":15000.0,"ag_exp":210000.0,"sale_exp":45000.0,"maint_exp":60000.0,"util_exp":90000.0,"total_exp":840000.0,"gop":660000.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":310000.0,"occ":78.0,"adr":900.0,"revpar":702.0,"commission":30000.0},{"hotel_id":"h_demo2","year":2025,"month":5,"rooms_rev":1272000.0,"fb_rev":279800.0,"other_rev":38200.0,"total_rev":1590000.0,"rooms_exp":254400.0,"fb_exp":190800.0,"other_dept_exp":15900.0,"ag_exp":222600.0,"sale_exp":47700.0,"maint_exp":63600.0,"util_exp":95400.0,"total_exp":890400.0,"gop":699600.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":349600.0,"occ":78.5,"adr":900.0,"revpar":706.3,"commission":31800.0},{"hotel_id":"h_demo2","year":2025,"month":6,"rooms_rev":1128000.0,"fb_rev":248200.0,"other_rev":33800.0,"total_rev":1410000.0,"rooms_exp":225600.0,"fb_exp":169200.0,"other_dept_exp":14100.0,"ag_exp":197400.0,"sale_exp":42300.0,"maint_exp":56400.0,"util_exp":84600.0,"total_exp":789600.0,"gop":620400.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":270400.0,"occ":77.5,"adr":900.0,"revpar":697.7,"commission":28200.0},{"hotel_id":"h_demo2","year":2026,"month":1,"rooms_rev":1296000.0,"fb_rev":285100.0,"other_rev":38900.0,"total_rev":1620000.0,"rooms_exp":259200.0,"fb_exp":194400.0,"other_dept_exp":16200.0,"ag_exp":226800.0,"sale_exp":48600.0,"maint_exp":64800.0,"util_exp":97200.0,"total_exp":907200.0,"gop":712800.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":362800.0,"occ":78.6,"adr":972.0,"revpar":764.4,"commission":32400.0},{"hotel_id":"h_demo2","year":2026,"month":2,"rooms_rev":1373800.0,"fb_rev":302200.0,"other_rev":41200.0,"total_rev":1717200.0,"rooms_exp":274800.0,"fb_exp":206100.0,"other_dept_exp":17200.0,"ag_exp":240400.0,"sale_exp":51500.0,"maint_exp":68700.0,"util_exp":103000.0,"total_exp":961700.0,"gop":755500.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":405500.0,"occ":79.2,"adr":972.0,"revpar":769.4,"commission":34300.0},{"hotel_id":"h_demo2","year":2026,"month":3,"rooms_rev":1218200.0,"fb_rev":268000.0,"other_rev":36500.0,"total_rev":1522700.0,"rooms_exp":243600.0,"fb_exp":182700.0,"other_dept_exp":15200.0,"ag_exp":213200.0,"sale_exp":45700.0,"maint_exp":60900.0,"util_exp":91400.0,"total_exp":852700.0,"gop":670000.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":320000.0,"occ":78.1,"adr":972.0,"revpar":759.3,"commission":30500.0},{"hotel_id":"h_demo2","year":2026,"month":4,"rooms_rev":1296000.0,"fb_rev":285100.0,"other_rev":38900.0,"total_rev":1620000.0,"rooms_exp":259200.0,"fb_exp":194400.0,"other_dept_exp":16200.0,"ag_exp":226800.0,"sale_exp":48600.0,"maint_exp":64800.0,"util_exp":97200.0,"total_exp":907200.0,"gop":712800.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":362800.0,"occ":78.6,"adr":972.0,"revpar":764.4,"commission":32400.0},{"hotel_id":"h_demo2","year":2026,"month":5,"rooms_rev":1373800.0,"fb_rev":302200.0,"other_rev":41200.0,"total_rev":1717200.0,"rooms_exp":274800.0,"fb_exp":206100.0,"other_dept_exp":17200.0,"ag_exp":240400.0,"sale_exp":51500.0,"maint_exp":68700.0,"util_exp":103000.0,"total_exp":961700.0,"gop":755500.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":405500.0,"occ":79.2,"adr":972.0,"revpar":769.4,"commission":34300.0},{"hotel_id":"h_demo2","year":2026,"month":6,"rooms_rev":1218200.0,"fb_rev":268000.0,"other_rev":36500.0,"total_rev":1522700.0,"rooms_exp":243600.0,"fb_exp":182700.0,"other_dept_exp":15200.0,"ag_exp":213200.0,"sale_exp":45700.0,"maint_exp":60900.0,"util_exp":91400.0,"total_exp":852700.0,"gop":670000.0,"rent":150000.0,"depreciation":120000.0,"interest":80000.0,"mgmt_fee":0,"other_below":0,"below_gop":-350000.0,"net_profit":320000.0,"occ":78.1,"adr":972.0,"revpar":759.3,"commission":30500.0}],"insights":[{"hotel_id":null,"year":2026,"kind":"info","sort_order":10,"title":"ข้อมูลตัวอย่าง","body":"นี่คือชุดข้อมูลสมมติสำหรับทดลองใช้งานเท่านั้น ไม่ใช่ตัวเลขจริงขององค์กรใด ๆ\nข้อมูลจริงจะแสดงเมื่อเชื่อมต่อฐานข้อมูลและเข้าสู่ระบบแล้ว"}]};
+const LOCAL_USERS = [
+  {id:'u_owner', username:'owner', pin:'demo1234', name:'เจ้าของกิจการ (ตัวอย่าง)', role:'owner',   scope_codes:[], can_see_overview:true, can_edit:true},
+  {id:'u_view',  username:'view',  pin:'demo1234', name:'ผู้ชม (ตัวอย่าง)',        role:'manager', scope_codes:['demo1','demo2'], can_see_overview:true, can_edit:false}
+];
+
+/* ============================================================
+   นิยามฟิลด์ P&L
+   ============================================================ */
+const GROUPS = [
+  {t:'รายได้', keys:['rooms_rev','fb_rev','other_rev','total_rev']},
+  {t:'ค่าใช้จ่ายดำเนินงาน', keys:['rooms_exp','fb_exp','other_dept_exp','ag_exp','sale_exp','maint_exp','util_exp','total_exp']},
+  {t:'กำไรขั้นต้นจากการดำเนินงาน', keys:['gop']},
+  {t:'รายการใต้ GOP', keys:['rent','depreciation','interest','mgmt_fee','other_below','below_gop']},
+  {t:'บรรทัดสุดท้าย', keys:['net_profit']},
+  {t:'ตัวชี้วัดการดำเนินงาน', keys:['occ','adr','revpar','commission']},
+];
+const LABEL = {
+  rooms_rev:'รายได้ห้องพัก', fb_rev:'รายได้อาหาร&เครื่องดื่ม', other_rev:'รายได้อื่น', total_rev:'รายได้รวม',
+  rooms_exp:'ต้นทุนห้องพัก', fb_exp:'ต้นทุนอาหาร&เครื่องดื่ม', other_dept_exp:'ต้นทุนแผนกอื่น',
+  ag_exp:'ค่าบริหารทั่วไป (A&G)', sale_exp:'ค่าการขาย&การตลาด', maint_exp:'ค่าซ่อมบำรุง', util_exp:'ค่าสาธารณูปโภค',
+  total_exp:'ค่าใช้จ่ายดำเนินงานรวม', gop:'GOP', rent:'ค่าเช่าอาคาร/ที่ดิน', depreciation:'ค่าเสื่อมราคา',
+  interest:'ดอกเบี้ยจ่าย', mgmt_fee:'ค่าบริหารจัดการ', other_below:'รายการอื่นใต้ GOP', below_gop:'รวมรายการใต้ GOP',
+  net_profit:'กำไรสุทธิ', occ:'อัตราเข้าพัก %', adr:'ADR', revpar:'RevPAR', commission:'ค่าคอมมิชชั่น OTA'
+};
+const NUM_KEYS = ['rooms_rev','fb_rev','other_rev','total_rev','rooms_exp','fb_exp','other_dept_exp','ag_exp',
+  'sale_exp','maint_exp','util_exp','total_exp','gop','rent','depreciation','interest','mgmt_fee','other_below',
+  'below_gop','net_profit','occ','adr','revpar','commission'];
+
+const REV_PARTS  = ['rooms_rev','fb_rev','other_rev'];
+const EXP_PARTS  = ['rooms_exp','fb_exp','other_dept_exp','ag_exp','sale_exp','maint_exp','util_exp'];
+const BELOW_PARTS= ['rent','depreciation','interest','mgmt_fee','other_below'];
+const DERIVED    = ['total_rev','total_exp','gop','below_gop','net_profit'];   // คำนวณอัตโนมัติเสมอ
+const OPS_KEYS   = ['occ','adr','revpar'];                                     // ค่าเฉลี่ย ไม่ใช่ผลรวม
+const SPARSE_SUM = ['commission'];                                             // ผลรวม แต่มักมีเดือนที่ว่าง
+const SUM_KEYS   = NUM_KEYS.filter(k => !OPS_KEYS.includes(k) && !SPARSE_SUM.includes(k));
+
+const TH_HEADERS = {
+  hotel_code:'รหัสโรงแรม', hotel_name:'ชื่อโรงแรม', year:'ปี(ค.ศ.)', month:'เดือน(1-12)',
+  rooms_rev:'รายได้ห้องพัก', fb_rev:'รายได้อาหารและเครื่องดื่ม', other_rev:'รายได้อื่น', total_rev:'รายได้รวม',
+  rooms_exp:'ต้นทุนแผนกห้องพัก', fb_exp:'ต้นทุนอาหารและเครื่องดื่ม', other_dept_exp:'ต้นทุนแผนกอื่น',
+  ag_exp:'ค่าบริหารทั่วไป (A&G)', sale_exp:'ค่าการขายและการตลาด', maint_exp:'ค่าซ่อมบำรุง', util_exp:'ค่าสาธารณูปโภค',
+  total_exp:'ค่าใช้จ่ายดำเนินงานรวม', gop:'GOP (กำไรขั้นต้นจากการดำเนินงาน)', rent:'ค่าเช่าอาคาร/ที่ดิน',
+  depreciation:'ค่าเสื่อมราคา', interest:'ดอกเบี้ยจ่าย', mgmt_fee:'ค่าบริหารจัดการ', other_below:'รายการอื่นใต้ GOP',
+  below_gop:'รวมรายการใต้ GOP', net_profit:'กำไรสุทธิ', occ:'อัตราเข้าพัก %', adr:'ADR (ราคาห้องเฉลี่ย)',
+  revpar:'RevPAR', commission:'ค่าคอมมิชชั่น OTA'
+};
+const MONTHS_TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+const PERIODS = {
+  full:{label:'ทั้งปี (ม.ค.–ธ.ค.)', months:[1,2,3,4,5,6,7,8,9,10,11,12]},
+  q1:{label:'ไตรมาส 1 (ม.ค.–มี.ค.)', months:[1,2,3]},
+  q2:{label:'ไตรมาส 2 (เม.ย.–มิ.ย.)', months:[4,5,6]},
+  q3:{label:'ไตรมาส 3 (ก.ค.–ก.ย.)', months:[7,8,9]},
+  q4:{label:'ไตรมาส 4 (ต.ค.–ธ.ค.)', months:[10,11,12]},
+  h1:{label:'ครึ่งปีแรก (ม.ค.–มิ.ย.)', months:[1,2,3,4,5,6]},
+  h2:{label:'ครึ่งปีหลัง (ก.ค.–ธ.ค.)', months:[7,8,9,10,11,12]},
+};
+
+/* ============================================================
+   ตรวจว่าไลบรารีภายนอกโหลดครบไหม (กันจอขาวตอนเน็ตบล็อก CDN)
+   ============================================================ */
+const LIB = { chart: !!window.Chart, xlsx: !!window.XLSX, supabase: !!window.supabase };
+
+/* ============================================================
+   BACKEND
+   ============================================================ */
+const CFG = window.PLAAI_CONFIG || {};
+const USE_CLOUD = !!(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY);
+let sb = null, TOKEN = null, BOOT_ERROR = null;
+
+function makeClient(token){
+  return window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, {
+    auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false },
+    global:{ headers: token ? {'x-app-token': token} : {} }
+  });
+}
+if (USE_CLOUD){
+  if (!LIB.supabase){
+    BOOT_ERROR = 'โหลดไลบรารี Supabase จากอินเทอร์เน็ตไม่สำเร็จ — ตรวจสอบการเชื่อมต่อเน็ต/ไฟร์วอลล์ ' +
+                 'หรือวางไฟล์ไลบรารีไว้ในโฟลเดอร์ assets/ ข้างไฟล์นี้ (ดูคู่มือ)';
+  } else {
+    try { sb = makeClient(null); }
+    catch(e){ BOOT_ERROR = 'เริ่มการเชื่อมต่อฐานข้อมูลไม่สำเร็จ: ' + e.message; }
+  }
+}
+
+const LS_KEY = 'plaai_local_db_v3';
+const SEED_VER = 3;
+const Store = { hotels:[], pl:[], insights:[], users:[] };
+
+function normRow(r){
+  const o = {...r};
+  NUM_KEYS.forEach(k=>{ o[k] = (o[k]===null || o[k]===undefined || o[k]==='') ? null : Number(o[k]); });
+  o.year = +o.year; o.month = +o.month;
+  return o;
+}
+function loadLocal(){
+  const fresh = ()=>{ const d=JSON.parse(JSON.stringify(SEED)); d._seedVer=SEED_VER;
+                      d.hotels.forEach((h,i)=>h.id=h.id||('h_'+i)); return d; };
+  let raw=null; try{ raw = localStorage.getItem(LS_KEY); }catch(e){}
+  if(!raw) return fresh();
+  let d; try{ d = JSON.parse(raw); }catch(e){ return fresh(); }
+  if(d._seedVer === SEED_VER) return d;
+  const n = fresh();
+  if(Array.isArray(d.insights) && d.insights.length) n.insights = d.insights;
+  return n;
+}
+function saveLocal(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify({_seedVer:SEED_VER,
+    hotels:Store.hotels, pl:Store.pl, insights:Store.insights})); }catch(e){}
+}
+
+async function loadAll(){
+  if(USE_CLOUD){
+    const [h,p,i] = await Promise.all([
+      sb.from('hotels').select('*').order('sort_order'),
+      sb.from('pl_monthly').select('*'),
+      sb.from('insights').select('*').order('sort_order')
+    ]);
+    const err = h.error||p.error||i.error;
+    if(err){ console.error(err); const e=new Error(err.message||'อ่านข้อมูลไม่สำเร็จ'); e.code=err.code; throw e; }
+    Store.hotels = h.data||[];
+    Store.pl     = (p.data||[]).map(normRow);
+    Store.insights = i.data||[];
+  } else {
+    const d = loadLocal();
+    Store.hotels = d.hotels; Store.pl = (d.pl||[]).map(normRow); Store.insights = d.insights||[];
+  }
+  Store.hotels.sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+}
+
+async function dbUpsertPL(rows){
+  if(USE_CLOUD){
+    const clean = rows.map(r=>{ const o={hotel_id:r.hotel_id, year:r.year, month:r.month};
+      NUM_KEYS.forEach(k=>o[k]=r[k]); return o; });
+    const {error} = await sb.from('pl_monthly').upsert(clean,{onConflict:'hotel_id,year,month'});
+    if(error) throw prettyDbError(error);
+  }
+  rows.forEach(r=>{
+    const i=Store.pl.findIndex(x=>x.hotel_id===r.hotel_id&&x.year===r.year&&x.month===r.month);
+    if(i>=0) Store.pl[i]=normRow({...Store.pl[i],...r}); else Store.pl.push(normRow(r));
+  });
+  if(!USE_CLOUD) saveLocal();
+}
+async function dbUpsertHotel(h){
+  if(USE_CLOUD){
+    if(h.id){ const {error}=await sb.from('hotels').update(h).eq('id',h.id); if(error) throw prettyDbError(error); }
+    else { const {data,error}=await sb.from('hotels').insert(h).select().single(); if(error) throw prettyDbError(error); h=data; }
+  } else { if(!h.id) h.id='h_'+Date.now(); }
+  const i=Store.hotels.findIndex(x=>x.id===h.id);
+  if(i>=0) Store.hotels[i]={...Store.hotels[i],...h}; else Store.hotels.push(h);
+  Store.hotels.sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+  if(!USE_CLOUD) saveLocal();
+}
+async function dbDeleteHotel(id){
+  if(USE_CLOUD){ const {error}=await sb.from('hotels').delete().eq('id',id); if(error) throw prettyDbError(error); }
+  Store.hotels=Store.hotels.filter(x=>x.id!==id);
+  Store.pl=Store.pl.filter(x=>x.hotel_id!==id);
+  Store.insights=Store.insights.filter(x=>x.hotel_id!==id);
+  if(!USE_CLOUD) saveLocal();
+}
+async function dbUpsertInsight(o){
+  if(USE_CLOUD){
+    if(o.id){ const {error}=await sb.from('insights').update(o).eq('id',o.id); if(error) throw prettyDbError(error); }
+    else { const {data,error}=await sb.from('insights').insert(o).select().single(); if(error) throw prettyDbError(error); o=data; }
+  } else { if(!o.id) o.id='i_'+Date.now(); }
+  const i=Store.insights.findIndex(x=>x.id===o.id);
+  if(i>=0) Store.insights[i]={...Store.insights[i],...o}; else Store.insights.push(o);
+  if(!USE_CLOUD) saveLocal();
+}
+async function dbDeleteInsight(id){
+  if(USE_CLOUD){ const {error}=await sb.from('insights').delete().eq('id',id); if(error) throw prettyDbError(error); }
+  Store.insights=Store.insights.filter(x=>x.id!==id);
+  if(!USE_CLOUD) saveLocal();
+}
+function prettyDbError(err){
+  const m = String(err.message||'');
+  if(err.code === '42501' || /row-level security|permission denied/i.test(m))
+    return new Error('คุณไม่มีสิทธิ์ทำรายการนี้ (ระบบตรวจสิทธิ์ที่ฐานข้อมูล)');
+  if(/pl_rev_balances/.test(m))  return new Error('รายได้รวมไม่เท่ากับผลรวมของรายได้ย่อย');
+  if(/pl_exp_balances/.test(m))  return new Error('ค่าใช้จ่ายรวมไม่เท่ากับผลรวมของค่าใช้จ่ายย่อย');
+  if(/pl_gop_balances/.test(m))  return new Error('GOP ไม่เท่ากับ รายได้รวม − ค่าใช้จ่ายรวม');
+  if(/pl_net_balances/.test(m))  return new Error('กำไรสุทธิ ไม่เท่ากับ GOP + รายการใต้ GOP');
+  if(/duplicate key/.test(m))    return new Error('ข้อมูลซ้ำกับที่มีอยู่แล้ว');
+  if(/Failed to fetch|NetworkError/i.test(m))
+    return new Error('เชื่อมต่อฐานข้อมูลไม่ได้ — ตรวจสอบอินเทอร์เน็ต');
+  return new Error(m || 'เกิดข้อผิดพลาด');
+}
+
+/* ============================================================
+   FORMAT / UTIL
+   ============================================================ */
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, m =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const fmt = (v,d=0)=> (v==null||isNaN(v)) ? '–'
+  : Number(v).toLocaleString('th-TH',{maximumFractionDigits:d,minimumFractionDigits:d});
+const fmtM = v => (v==null||isNaN(v)) ? '–' : (v/1e6).toFixed(2)+' ล้าน';
+const el = h => { const t=document.createElement('template'); t.innerHTML=h.trim(); return t.content.firstElementChild; };
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show');
+  clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('show'),2600); }
+
+/* การเปลี่ยนแปลงของ "ตัวเงิน/จำนวน" → คิดเป็น % */
+function pctChange(a,b){
+  if(a==null||b==null||isNaN(a)||isNaN(b)) return {kind:'na', text:'—'};
+  if(a===0 && b===0) return {kind:'flat', text:'ไม่เปลี่ยนแปลง'};
+  if(a===0)          return {kind:'new',  text:'▲ เริ่มมีข้อมูล'};
+  const v=(b-a)/Math.abs(a)*100;
+  if(Math.abs(v)<0.05) return {kind:'flat', v:0, text:'ทรงตัว'};
+  return {kind:'pct', v, text:(v>=0?'▲ +':'▼ ')+v.toFixed(1)+'%'};
+}
+/* การเปลี่ยนแปลงของ "ค่าที่เป็น % อยู่แล้ว" → คิดเป็นจุด (percentage point) */
+function ppChange(a,b){
+  if(a==null||b==null||isNaN(a)||isNaN(b)) return {kind:'na', text:'—'};
+  const v=b-a;
+  if(Math.abs(v)<0.05) return {kind:'flat', v:0, text:'ทรงตัว'};
+  return {kind:'pp', v, text:(v>=0?'▲ +':'▼ ')+v.toFixed(1)+' จุด'};
+}
+function changeClass(ch, goodUp=true){
+  if(ch.kind==='na'||ch.kind==='flat') return 'neutral';
+  if(ch.kind==='new') return goodUp?'positive':'negative';
+  const up = ch.v>=0;
+  return (goodUp?up:!up) ? 'positive' : 'negative';
+}
+
+/* สีตัวอักษรที่อ่านออกบนพื้นหลังสีใดก็ได้ */
+function rgbOf(hex){ const c=String(hex||'#333').replace('#','').padEnd(6,'0');
+  return [parseInt(c.slice(0,2),16)||0, parseInt(c.slice(2,4),16)||0, parseInt(c.slice(4,6),16)||0]; }
+function relLum(hex){ const [r,g,b]=rgbOf(hex).map(v=>{ v/=255; return v<=0.03928? v/12.92 : Math.pow((v+0.055)/1.055,2.4); });
+  return 0.2126*r + 0.7152*g + 0.0722*b; }
+function textOn(hex){ const L=relLum(hex);
+  return ((1.05)/(L+0.05)) >= ((L+0.05)/0.05) ? '#ffffff' : '#10203a'; }
+function hexA(hex,a){ const [r,g,b]=rgbOf(hex); return `rgba(${r},${g},${b},${a})`; }
+function shade(hex,amt){ return '#'+rgbOf(hex).map(v=>Math.max(0,Math.min(255,v+amt)).toString(16).padStart(2,'0')).join(''); }
+
+let charts=[];
+function clearCharts(){ charts.forEach(c=>{ try{c.destroy();}catch(e){} }); charts=[]; }
+function mkChart(id,cfg){
+  const c=document.getElementById(id); if(!c) return;
+  if(!LIB.chart){ const box=c.parentElement;
+    box.innerHTML='<div class="chart-missing">ไม่สามารถแสดงกราฟได้<br>(โหลดไลบรารี Chart.js ไม่สำเร็จ)</div>'; return; }
+  try{ const ch=new Chart(c,cfg); charts.push(ch); return ch; }
+  catch(e){ console.error('chart',id,e); }
+}
+
+function hotelByCode(code){ return Store.hotels.find(h=>h.code===code); }
+function hotelById(id){ return Store.hotels.find(h=>h.id===id); }
+function activeHotels(){ return Store.hotels.filter(h=>h.active!==false).sort((a,b)=>(a.sort_order||0)-(b.sort_order||0)); }
+function availableYears(){
+  const s=new Set(Store.pl.map(r=>r.year).filter(Boolean));
+  if(!s.size){ const y=new Date().getFullYear(); s.add(y-1); s.add(y); }
+  const arr=[...s].sort((a,b)=>a-b);
+  if(arr.length===1) arr.unshift(arr[0]-1);
+  return arr;
+}
+function monthsWithData(hotelIds, year){
+  const set=new Set(Store.pl.filter(r=>hotelIds.includes(r.hotel_id)&&r.year===year).map(r=>r.month));
+  return [...set].sort((a,b)=>a-b);
+}
+function rangeLabel(months){
+  if(!months.length) return '(ไม่มีเดือนที่เทียบได้)';
+  const runs=[]; let s=months[0], p=months[0];
+  months.slice(1).forEach(m=>{ if(m===p+1){p=m;} else {runs.push([s,p]); s=p=m;} });
+  runs.push([s,p]);
+  return runs.map(([a,b])=> a===b ? MONTHS_TH[a-1] : MONTHS_TH[a-1]+'–'+MONTHS_TH[b-1]).join(', ');
+}
+
+
+/* ============================================================
+   การรวมข้อมูลแบบ "เทียบกันได้จริง"
+   - รวมเฉพาะเดือนที่มีข้อมูลทั้งปีฐานและปีที่วิเคราะห์
+   - Occ / ADR / RevPAR ใช้ค่าเฉลี่ยถ่วงน้ำหนักตามจำนวนห้องคืน
+     (จำนวนห้องคืน = รายได้ห้องพัก ÷ RevPAR) ถ้าข้อมูลครบ
+   - ค่าคอมมิชชั่น รวมเฉพาะเดือนที่มีตัวเลขครบทั้งสองปี
+   ============================================================ */
+let YB = null, YC = null, PERIOD = 'full', COMPARE = 'ytd';
+
+function rowOf(hid,y,m){ return Store.pl.find(x=>x.hotel_id===hid&&x.year===y&&x.month===m); }
+
+function comparableMonths(hotelIds, wanted){
+  const any=(y,m)=>hotelIds.some(h=>!!rowOf(h,y,m));
+  const both=[], onlyB=[], onlyC=[];
+  wanted.forEach(m=>{ const b=any(YB,m), c=any(YC,m);
+    if(b&&c) both.push(m); else if(b) onlyB.push(m); else if(c) onlyC.push(m); });
+  return {months:both, onlyB, onlyC};
+}
+
+/* ค่าเฉลี่ยถ่วงน้ำหนักของ Occ/ADR/RevPAR — คืน null ถ้าข้อมูลไม่ครบ */
+function opsWeighted(hotelIds, year, months){
+  let avail=0, sold=0, rev=0;
+  for(const m of months){
+    for(const hid of hotelIds){
+      const r = rowOf(hid,year,m); if(!r) continue;
+      const rp=r.revpar, oc=r.occ, rr=r.rooms_rev;
+      if(!(rp>0) || !(oc>0) || !(rr>0)) return null;
+      const a = rr/rp;                       // จำนวนห้องคืนที่ขายได้ทั้งหมด (available room-nights)
+      avail += a; sold += a*oc/100; rev += rr;
+    }
+  }
+  if(avail<=0 || sold<=0) return null;
+  return { occ: sold/avail*100, adr: rev/sold, revpar: rev/avail };
+}
+/* ค่าเฉลี่ยธรรมดา ใช้เมื่อข้อมูลไม่พอสำหรับถ่วงน้ำหนัก */
+function opsSimple(hotelIds, year, months, key){
+  const vals=[];
+  months.forEach(m=>hotelIds.forEach(hid=>{ const r=rowOf(hid,year,m);
+    if(r && r[key]!=null && !isNaN(r[key])) vals.push(r[key]); }));
+  return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+}
+
+/**
+ * รวมข้อมูลของปีฐาน (YB) และปีที่วิเคราะห์ (YC) พร้อมกัน
+ * @returns {b, c, months, onlyB, onlyC, opsMonths, opsWeighted, commMonths, hasData}
+ */
+function aggPair(hotelIds, wantedMonths){
+  const cm = comparableMonths(hotelIds, wantedMonths);
+  const months = cm.months;
+  const b={_n:0}, c={_n:0};
+  NUM_KEYS.forEach(k=>{ b[k]=0; c[k]=0; });
+
+  const collect=(year,target)=>{
+    months.forEach(m=>hotelIds.forEach(hid=>{ const r=rowOf(hid,year,m); if(!r) return;
+      target._n++; SUM_KEYS.forEach(k=> target[k] += (r[k]||0) ); }));
+  };
+  collect(YB,b); collect(YC,c);
+
+  /* --- ค่าคอมมิชชั่น: เฉพาะเดือนที่มีครบทั้งสองปี --- */
+  const hasComm=(y,m)=>hotelIds.every(hid=>{ const r=rowOf(hid,y,m); return !r || r.commission!=null; })
+                    && hotelIds.some(hid=>{ const r=rowOf(hid,y,m); return r && r.commission!=null; });
+  const commMonths = months.filter(m=>hasComm(YB,m)&&hasComm(YC,m));
+  const sumComm=(y)=>{ let s=0; commMonths.forEach(m=>hotelIds.forEach(hid=>{
+      const r=rowOf(hid,y,m); if(r&&r.commission!=null) s+=r.commission; })); return s; };
+  b.commission = commMonths.length ? sumComm(YB) : null;
+  c.commission = commMonths.length ? sumComm(YC) : null;
+
+  /* --- Occ / ADR / RevPAR --- */
+  const wb = opsWeighted(hotelIds, YB, months), wc = opsWeighted(hotelIds, YC, months);
+  let weighted=false, opsMonths=months;
+  if(wb && wc){
+    weighted = true;
+    OPS_KEYS.forEach(k=>{ b[k]=wb[k]; c[k]=wc[k]; });
+  } else {
+    OPS_KEYS.forEach(k=>{
+      const ok = months.filter(m=>
+        hotelIds.some(h=>{const r=rowOf(h,YB,m); return r&&r[k]!=null;}) &&
+        hotelIds.some(h=>{const r=rowOf(h,YC,m); return r&&r[k]!=null;}));
+      b[k] = ok.length ? opsSimple(hotelIds,YB,ok,k) : null;
+      c[k] = ok.length ? opsSimple(hotelIds,YC,ok,k) : null;
+      if(k==='occ') opsMonths = ok;
+    });
+  }
+  return {b, c, months, onlyB:cm.onlyB, onlyC:cm.onlyC,
+          opsMonths, opsWeighted:weighted, commMonths, hasData: months.length>0};
+}
+
+/* แถบอธิบายว่าตัวเลขบนหน้าจอมาจากเดือนไหนบ้าง */
+function scopeNote(agg, hotelIds){
+  const missing = [...agg.onlyB, ...agg.onlyC];
+  if(!agg.months.length){
+    return `<div class="scope-note warn"><span>⚠</span><span>ไม่มีเดือนใดในช่วง “${esc(periodLabel())}”
+      ที่มีข้อมูลครบทั้งปี ${YB} และ ${YC} จึงเปรียบเทียบไม่ได้ — กรุณาเลือกช่วงเวลาอื่น</span></div>`;
+  }
+  let txt = `ตัวเลขทั้งหน้านี้เปรียบเทียบเฉพาะเดือนที่มีข้อมูล<b>ครบทั้งสองปี</b> คือ <b>${esc(rangeLabel(agg.months))}</b>
+             (${agg.months.length} เดือน)`;
+  let cls = '';
+  if(missing.length){
+    const only = [];
+    if(agg.onlyB.length) only.push(`มีเฉพาะปี ${YB}: ${esc(rangeLabel(agg.onlyB))}`);
+    if(agg.onlyC.length) only.push(`มีเฉพาะปี ${YC}: ${esc(rangeLabel(agg.onlyC))}`);
+    txt += ` · เดือนที่ถูกตัดออกเพราะข้อมูลไม่ครบ — ${only.join(' · ')}`;
+    cls = ' warn';
+  }
+  if(agg.commMonths && agg.commMonths.length && agg.commMonths.length < agg.months.length){
+    txt += ` · ค่าคอมมิชชั่น OTA คิดจาก ${esc(rangeLabel(agg.commMonths))} เท่านั้น`;
+  }
+  txt += agg.opsWeighted
+    ? ' · Occ/ADR/RevPAR เป็นค่าเฉลี่ยถ่วงน้ำหนักตามจำนวนห้องคืน'
+    : ' · Occ/ADR/RevPAR เป็นค่าเฉลี่ยอย่างง่าย (ข้อมูล RevPAR ไม่ครบทุกเดือน)';
+  return `<div class="scope-note${cls}"><span>ℹ</span><span>${txt}</span></div>`;
+}
+
+
+/* ============================================================
+   AUTH / SESSION
+   ============================================================ */
+let ME=null, MODE='dash', CURRENT_HOTEL='__ov__';
+
+function visibleHotels(){
+  if(!ME) return [];
+  if(ME.role==='owner'||ME.role==='accounting') return activeHotels();
+  const codes = ME.scope_codes||[];
+  return activeHotels().filter(h=>codes.includes(h.code));
+}
+function canSeeOverview(){ return !!(ME && (ME.role==='owner'||ME.role==='accounting'||ME.can_see_overview)); }
+function canEdit(){ return !!(ME && ME.can_edit); }
+function isOwner(){ return !!(ME && ME.role==='owner'); }
+
+function setLoginMsg(txt, info){
+  const e=document.getElementById('loginErr');
+  e.textContent = txt || ''; e.className = 'login-err' + (info?' info':'');
+}
+
+async function doLogin(){
+  const btn  = document.getElementById('loginBtn');
+  const uname= document.getElementById('uname').value.trim().toLowerCase();
+  const pin  = document.getElementById('pin').value;
+  if(BOOT_ERROR){ setLoginMsg(BOOT_ERROR); return; }
+  if(!uname){ setLoginMsg('กรุณากรอกชื่อผู้ใช้'); return; }
+  if(!pin)  { setLoginMsg('กรุณากรอกรหัสผ่าน'); return; }
+
+  btn.disabled = true; setLoginMsg('กำลังเข้าสู่ระบบ…', true);
+  try{
+    if(USE_CLOUD){
+      const {data, error} = await sb.rpc('app_login', {p_username:uname, p_pin:pin});
+      if(error){
+        console.error(error);
+        setLoginMsg(/Failed to fetch|NetworkError/i.test(error.message||'')
+          ? 'เชื่อมต่อฐานข้อมูลไม่ได้ — ตรวจสอบอินเทอร์เน็ตของเครื่องนี้'
+          : 'ระบบยืนยันตัวตนขัดข้อง: ' + (error.message||''));
+        return;
+      }
+      if(!data || !data.ok){
+        const code = data && data.error;
+        if(code==='locked')
+          setLoginMsg(`บัญชีนี้ถูกล็อกชั่วคราวจากการกรอกรหัสผิดหลายครั้ง กรุณารออีก ${data.minutes} นาที`);
+        else setLoginMsg('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+        return;
+      }
+      TOKEN = data.token;
+      ME    = data.user;
+      sb    = makeClient(TOKEN);
+    } else {
+      const u = LOCAL_USERS.find(x=>x.username===uname && x.pin===pin);
+      if(!u){ setLoginMsg('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'); return; }
+      ME = {...u};
+    }
+
+    try{ await loadAll(); }
+    catch(e){ ME=null; TOKEN=null; if(USE_CLOUD) sb=makeClient(null);
+      setLoginMsg('เข้าสู่ระบบได้ แต่โหลดข้อมูลไม่สำเร็จ: '+e.message); return; }
+
+    enterApp();
+  } catch(e){
+    console.error(e);
+    setLoginMsg('เกิดข้อผิดพลาด: ' + (e.message||e));
+  } finally { btn.disabled = false; }
+}
+
+function enterApp(){
+  document.getElementById('login').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('userName').textContent = ME.name || ME.username;
+  const rb=document.getElementById('roleBadge');
+  rb.textContent = ME.role==='owner'?'เจ้าของ':ME.role==='accounting'?'บัญชี':'ผู้จัดการ';
+  rb.className='role-badge'+(ME.can_edit?' edit':'');
+  const eb=document.getElementById('envBadge');
+  eb.textContent = USE_CLOUD?'CLOUD':'ตัวอย่าง (LOCAL)';
+  eb.className='env-badge '+(USE_CLOUD?'env-cloud':'env-local');
+
+  /* เลือกปีและช่วงเวลาเริ่มต้นจากข้อมูลที่มีจริง */
+  const yrs = availableYears();
+  YC = yrs[yrs.length-1];
+  YB = yrs.length>1 ? yrs[yrs.length-2] : yrs[0]-1;
+  PERIOD = pickDefaultPeriod();
+
+  buildModeTabs();
+  const vh = visibleHotels();
+  CURRENT_HOTEL = canSeeOverview() ? '__ov__' : (vh[0]?vh[0].code:'__ov__');
+  MODE='dash';
+  render();
+  startIdleTimer();
+  startKeepAlive();
+}
+
+/* เลือกช่วงเวลาเริ่มต้นให้ตรงกับเดือนที่มีข้อมูลจริง */
+function pickDefaultPeriod(){
+  const ids = visibleHotels().map(h=>h.id);
+  if(!ids.length) return 'full';
+  const inBoth = m => Store.pl.some(r=>ids.includes(r.hotel_id)&&r.year===YB&&r.month===m)
+                   && Store.pl.some(r=>ids.includes(r.hotel_id)&&r.year===YC&&r.month===m);
+  const all = [1,2,3,4,5,6,7,8,9,10,11,12].filter(inBoth);
+  if(!all.length) return 'full';
+  for(const key of ['full','h1','h2','q1','q2','q3','q4']){
+    const ms = PERIODS[key].months;
+    if(ms.every(m=>all.includes(m))) return key;      // ช่วงแรกที่ข้อมูลครบพอดี
+  }
+  const max = Math.max(...all);
+  if(max<=3) return 'q1'; if(max<=6) return 'h1'; if(max<=9) return 'q3';
+  return 'full';
+}
+
+async function logout(reason){
+  RENDER_SEQ++;                       // ยกเลิกหน้าที่กำลังโหลดค้างอยู่ ไม่ให้เขียนข้อมูลกลับมาหลัง logout
+  stopIdleTimer(); stopKeepAlive(); clearCharts();
+  if(USE_CLOUD && TOKEN){ try{ await sb.rpc('app_logout'); }catch(e){} }
+  TOKEN=null; ME=null;
+  if(USE_CLOUD) sb = makeClient(null);
+  Store.hotels=[]; Store.pl=[]; Store.insights=[]; Store.users=[];
+  document.getElementById('view').innerHTML='';            // ล้างข้อมูลผู้ใช้เดิมออกจากหน้าจอ
+  document.getElementById('modeTabs').innerHTML='';
+  document.getElementById('userName').textContent='';
+  document.getElementById('modalHost').innerHTML='';
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('login').classList.remove('hidden');
+  document.getElementById('pin').value=''; document.getElementById('uname').value='';
+  setLoginMsg(typeof reason==='string' ? reason : '', true);
+}
+
+/* ---------- ล็อกเอาต์อัตโนมัติเมื่อไม่ใช้งาน 30 นาที ---------- */
+const IDLE_LIMIT_MS = 30*60*1000;
+let idleTimer=null, keepAlive=null;
+const IDLE_EVENTS = ['mousemove','mousedown','keydown','scroll','touchstart','click','wheel'];
+function resetIdleTimer(){ if(!ME) return; clearTimeout(idleTimer);
+  idleTimer = setTimeout(()=>{ if(ME) logout('ระบบออกจากระบบอัตโนมัติ เนื่องจากไม่มีการใช้งานเกิน 30 นาที'); }, IDLE_LIMIT_MS); }
+function startIdleTimer(){ IDLE_EVENTS.forEach(ev=>window.addEventListener(ev,resetIdleTimer,{passive:true})); resetIdleTimer(); }
+function stopIdleTimer(){ clearTimeout(idleTimer); idleTimer=null;
+  IDLE_EVENTS.forEach(ev=>window.removeEventListener(ev,resetIdleTimer,{passive:true})); }
+/* ต่ออายุ session ฝั่งฐานข้อมูลทุก 10 นาทีระหว่างใช้งาน */
+function startKeepAlive(){ if(!USE_CLOUD) return; stopKeepAlive();
+  keepAlive = setInterval(async ()=>{ if(!ME) return;
+    try{ const {data}=await sb.rpc('app_touch'); if(data===false) logout('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่'); }catch(e){}
+  }, 10*60*1000); }
+function stopKeepAlive(){ if(keepAlive) clearInterval(keepAlive); keepAlive=null; }
+
+function buildModeTabs(){
+  const host=document.getElementById('modeTabs'); host.innerHTML='';
+  const tabs=[['dash','แดชบอร์ด']];
+  if(canEdit())  tabs.push(['entry','กรอกข้อมูล']);
+  if(isOwner()){ tabs.push(['hotels','จัดการโรงแรม']); tabs.push(['users','ผู้ใช้งาน']); tabs.push(['audit','ประวัติการแก้ไข']); }
+  tabs.forEach(([k,l])=>{ const b=el(`<button type="button" data-m="${k}">${esc(l)}</button>`);
+    b.onclick=()=>{ MODE=k; render(); }; host.appendChild(b); });
+}
+
+
+/* ============================================================
+   RENDER ROUTER
+   ============================================================ */
+let RENDER_SEQ = 0;   // กันหน้าที่โหลดค้างอยู่มาเขียนทับหน้าใหม่ (หรือเขียนทับหลังออกจากระบบ)
+function render(){
+  RENDER_SEQ++;
+  document.querySelectorAll('#modeTabs button').forEach(b=>b.classList.toggle('active', b.dataset.m===MODE));
+  clearCharts();
+  const v=document.getElementById('view');
+  if(MODE==='entry'  && !canEdit())  MODE='dash';
+  if((MODE==='hotels'||MODE==='users'||MODE==='audit') && !isOwner()) MODE='dash';
+  if(MODE==='dash')   return renderDash(v);
+  if(MODE==='entry')  return renderEntry(v);
+  if(MODE==='hotels') return renderHotelsAdmin(v);
+  if(MODE==='users')  return renderUsersAdmin(v);
+  if(MODE==='audit')  return renderAudit(v);
+}
+
+function controlBar(){
+  const yrs = availableYears();
+  const yOpt = sel => yrs.map(y=>`<option value="${y}" ${y===sel?'selected':''}>${y}</option>`).join('');
+  const pOpt = Object.entries(PERIODS).map(([k,p])=>`<option value="${k}" ${k===PERIOD?'selected':''}>${esc(p.label)}</option>`).join('');
+  const warn = (YB===YC) ? `<div class="ctl" style="align-self:flex-end;color:var(--neg);font-size:12px;font-weight:600">
+      ⚠ ปีฐานกับปีที่วิเคราะห์เป็นปีเดียวกัน</div>` : '';
+  return `<div class="controls noprint">
+    <div class="ctl"><label for="cYB">ปีฐาน (เทียบจาก)</label><select id="cYB">${yOpt(YB)}</select></div>
+    <div class="ctl"><label for="cYC">ปีที่วิเคราะห์</label><select id="cYC">${yOpt(YC)}</select></div>
+    <div class="ctl"><label for="cP">ช่วงข้อมูล</label><select id="cP">${pOpt}</select></div>
+    <div class="ctl"><label>รูปแบบเทียบ</label>
+      <div class="seg" id="cCmp">
+        <button type="button" data-c="ytd" class="${COMPARE==='ytd'?'active':''}">สะสม (YTD)</button>
+        <button type="button" data-c="yoy" class="${COMPARE==='yoy'?'active':''}">รายเดือน (YoY)</button>
+      </div></div>
+    ${warn}
+    <div class="ctl"><label>&nbsp;</label><button type="button" class="btn btn-soft btn-sm" id="btnPrint">🖨 พิมพ์ / บันทึก PDF</button></div>
+  </div>`;
+}
+function wireControls(){
+  const yb=document.getElementById('cYB'), yc=document.getElementById('cYC'), p=document.getElementById('cP');
+  if(yb) yb.onchange=e=>{YB=+e.target.value;render();};
+  if(yc) yc.onchange=e=>{YC=+e.target.value;render();};
+  if(p)  p.onchange =e=>{PERIOD=e.target.value;render();};
+  document.querySelectorAll('#cCmp button').forEach(b=>b.onclick=()=>{COMPARE=b.dataset.c;render();});
+  const pr=document.getElementById('btnPrint'); if(pr) pr.onclick=()=>window.print();
+}
+function periodMonths(){ return PERIODS[PERIOD].months; }
+function periodLabel(){  return PERIODS[PERIOD].label; }
+
+function hotelTabs(){
+  const vh=visibleHotels();
+  let h='<div class="hotel-tabs noprint">';
+  if(canSeeOverview()){
+    const act = CURRENT_HOTEL==='__ov__';
+    h+=`<button type="button" data-h="__ov__" class="${act?'active':''}"
+        style="${act?`background:var(--brand);color:#fff`:''}">
+        <span class="dot" style="background:#b8912f"></span>${esc(ME.role==='manager'?'ภาพรวมที่คุณดูแล':'ภาพรวมบริษัท')}</button>`;
+  }
+  vh.forEach(ht=>{
+    const act = CURRENT_HOTEL===ht.code;
+    const nodata = !Store.pl.some(r=>r.hotel_id===ht.id);
+    h+=`<button type="button" data-h="${esc(ht.code)}" class="${act?'active':''}${nodata?' nodata':''}"
+        style="${act?`background:${esc(ht.color)};color:${textOn(ht.color)}`:''}">
+        <span class="dot" style="background:${esc(ht.color)}"></span>${esc(ht.name)}${nodata?' (ยังไม่มีข้อมูล)':''}</button>`;
+  });
+  return h+'</div>';
+}
+function wireHotelTabs(){
+  document.querySelectorAll('.hotel-tabs button').forEach(b=>b.onclick=()=>{CURRENT_HOTEL=b.dataset.h;render();});
+}
+
+/* ============================================================
+   KPI
+   ============================================================ */
+function kpiCard(o){
+  // o = {label, b, c, type:'money'|'pct'|'count', goodUp, hl, note}
+  const type = o.type||'money', goodUp = o.goodUp!==false;
+  const ch = (type==='pct') ? ppChange(o.b,o.c) : pctChange(o.b,o.c);
+  const showChange = type!=='count';
+  const val = o.c==null ? '–'
+    : type==='pct'   ? o.c.toFixed(1)+'%'
+    : type==='count' ? fmt(o.c,0)
+    : '฿'+fmtM(o.c);
+  const sub = o.b==null ? `${YB}: –`
+    : type==='pct'   ? `${YB}: ${o.b.toFixed(1)}%`
+    : type==='count' ? `${YB}: ${fmt(o.b,0)}`
+    : `${YB}: ฿${fmtM(o.b)}`;
+  return `<div class="kpi-card ${o.hl?'hl':''}">
+    <div class="kpi-label">${esc(o.label)}</div>
+    <div class="kpi-value">${val}</div>
+    <div class="kpi-sub">${type==='count'?'':sub}</div>
+    ${showChange?`<div class="kpi-change ${changeClass(ch,goodUp)}">${ch.text}
+       <span style="opacity:.7;font-weight:500">เทียบ ${YB}</span></div>`:''}
+    ${o.note?`<span class="kpi-flag">${esc(o.note)}</span>`:''}</div>`;
+}
+function deltaCell(a,b,goodUp=true,mode='pct'){
+  const ch = mode==='pp' ? ppChange(a,b) : pctChange(a,b);
+  if(ch.kind==='na') return '<td class="na">–</td>';
+  const cls = changeClass(ch,goodUp);
+  const c = cls==='positive'?'up':cls==='negative'?'down':'flat';
+  return `<td class="delta ${c}">${ch.text}</td>`;
+}
+
+/* ============================================================
+   DASHBOARD
+   ============================================================ */
+function renderDash(v){
+  v.innerHTML = controlBar() + hotelTabs() + '<div id="dashBody"></div>';
+  wireControls(); wireHotelTabs();
+  const body=document.getElementById('dashBody');
+  if(CURRENT_HOTEL==='__ov__') renderOverview(body);
+  else renderHotel(body, hotelByCode(CURRENT_HOTEL));
+}
+
+/* ---------- ภาพรวม ---------- */
+function renderOverview(body){
+  const months=periodMonths();
+  document.documentElement.style.setProperty('--accent','#1f4e5f');
+  const all = visibleHotels();
+  const rows = all.map(h=>({h, a:aggPair([h.id], months)})).filter(r=>r.a.hasData);
+  const skipped = all.filter(h=>!rows.some(r=>r.h.id===h.id));
+  const groupAgg = aggPair(all.map(h=>h.id), months);
+
+  const T=(side,k)=>rows.reduce((s,r)=>s+((side==='b'?r.a.b:r.a.c)[k]||0),0);
+  const rev_b=T('b','total_rev'), rev_c=T('c','total_rev');
+  const gop_b=T('b','gop'),       gop_c=T('c','gop');
+  const net_b=T('b','net_profit'),net_c=T('c','net_profit');
+
+  const title = ME.role==='manager' ? 'ภาพรวมโรงแรมที่คุณดูแล' : 'ภาพรวมกลุ่มโรงแรม PLAAI';
+  let h=`<div class="page-header" style="background:linear-gradient(135deg,#0f2c44,#1f4e5f);color:#fff">
+    <div class="eyebrow">รายงานเพื่อการนำเสนอผู้บริหาร · ${esc(periodLabel())}</div>
+    <h1>${esc(title)}</h1>
+    <p>เปรียบเทียบ ${YB} กับ ${YC} · ${rows.length} โรงแรมที่มีข้อมูล</p></div>`;
+
+  h += scopeNote(groupAgg, all.map(x=>x.id));
+  if(!groupAgg.hasData){ body.innerHTML=h; return; }
+
+  h+=`<div class="kpi-row">
+    ${kpiCard({label:'รายได้รวมทุกโรงแรม', b:rev_b, c:rev_c})}
+    ${kpiCard({label:'GOP รวม', b:gop_b, c:gop_c})}
+    ${kpiCard({label:'GOP Margin รวม', type:'pct', b:rev_b?gop_b/rev_b*100:null, c:rev_c?gop_c/rev_c*100:null})}
+    ${kpiCard({label:'กำไรสุทธิรวม', b:net_b, c:net_c, hl:true})}
+    ${kpiCard({label:'จำนวนโรงแรมที่มีข้อมูล', type:'count', b:rows.length, c:rows.length,
+               note: skipped.length ? 'ไม่รวม: '+skipped.map(s=>s.name).join(', ') : ''})}
+  </div>`;
+
+  h+=`<div class="grid2">
+    <div class="panel"><h3>รายได้รวมรายโรงแรม</h3><div class="cap">${YB} เทียบ ${YC} · ${esc(rangeLabel(groupAgg.months))}</div>
+      <div class="chart-box"><canvas id="ovRev"></canvas></div></div>
+    <div class="panel"><h3>GOP รายโรงแรม</h3><div class="cap">${YB} เทียบ ${YC} · ${esc(rangeLabel(groupAgg.months))}</div>
+      <div class="chart-box"><canvas id="ovGop"></canvas></div></div>
+  </div>`;
+
+  h+=`<div class="panel"><h3>ตารางสรุปรายโรงแรม</h3>
+    <div class="cap">${esc(rangeLabel(groupAgg.months))} · หน่วย: บาท</div>
+    <div class="table-scroll"><table class="data"><thead><tr>
+      <th class="lbl">โรงแรม</th>
+      <th>รายได้ ${YB}</th><th>รายได้ ${YC}</th><th>Δ</th>
+      <th>GOP ${YB}</th><th>GOP ${YC}</th><th>Δ</th>
+      <th>GOP Margin ${YB}</th><th>GOP Margin ${YC}</th><th>Δ (จุด)</th>
+      <th>กำไรสุทธิ ${YC}</th><th>Δ กำไรสุทธิ</th>
+    </tr></thead><tbody>`;
+  rows.forEach(r=>{
+    const gmB = r.a.b.total_rev ? r.a.b.gop/r.a.b.total_rev*100 : null;
+    const gmC = r.a.c.total_rev ? r.a.c.gop/r.a.c.total_rev*100 : null;
+    h+=`<tr><td class="lbl"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;
+          background:${esc(r.h.color)};margin-right:7px"></span>${esc(r.h.name)}</td>
+      <td>${fmt(r.a.b.total_rev)}</td><td>${fmt(r.a.c.total_rev)}</td>${deltaCell(r.a.b.total_rev,r.a.c.total_rev)}
+      <td>${fmt(r.a.b.gop)}</td><td>${fmt(r.a.c.gop)}</td>${deltaCell(r.a.b.gop,r.a.c.gop)}
+      <td>${gmB==null?'–':gmB.toFixed(1)+'%'}</td><td>${gmC==null?'–':gmC.toFixed(1)+'%'}</td>${deltaCell(gmB,gmC,true,'pp')}
+      <td>${fmt(r.a.c.net_profit)}</td>${deltaCell(r.a.b.net_profit,r.a.c.net_profit)}</tr>`;
+  });
+  const gmTb = rev_b?gop_b/rev_b*100:null, gmTc = rev_c?gop_c/rev_c*100:null;
+  h+=`</tbody><tfoot><tr><td class="lbl">รวมทุกโรงแรม</td>
+    <td>${fmt(rev_b)}</td><td>${fmt(rev_c)}</td>${deltaCell(rev_b,rev_c)}
+    <td>${fmt(gop_b)}</td><td>${fmt(gop_c)}</td>${deltaCell(gop_b,gop_c)}
+    <td>${gmTb==null?'–':gmTb.toFixed(1)+'%'}</td><td>${gmTc==null?'–':gmTc.toFixed(1)+'%'}</td>${deltaCell(gmTb,gmTc,true,'pp')}
+    <td>${fmt(net_c)}</td>${deltaCell(net_b,net_c)}</tr></tfoot></table></div>
+    <div class="tbl-note">Δ ของรายได้ / GOP / กำไรสุทธิ เป็น <b>% การเปลี่ยนแปลง</b> ·
+      Δ ของ GOP Margin เป็น <b>จุด (percentage point)</b></div></div>`;
+
+  h += insightSection(null);
+  body.innerHTML = h;
+
+  const names=rows.map(r=>r.h.name), cols=rows.map(r=>r.h.color);
+  const barCfg = key => ({type:'bar',
+    data:{labels:names, datasets:[
+      {label:String(YB), data:rows.map(r=>r.a.b[key]), backgroundColor:'#c3ced9', borderRadius:5},
+      {label:String(YC), data:rows.map(r=>r.a.c[key]), backgroundColor:cols, borderRadius:5}]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8}},
+        tooltip:{callbacks:{label:c=>c.dataset.label+': ฿'+fmt(c.parsed.y)}}},
+      scales:{y:{ticks:{callback:v=>fmtM(v)}}}}});
+  mkChart('ovRev', barCfg('total_rev'));
+  mkChart('ovGop', barCfg('gop'));
+  wireInsights(null);
+}
+
+/* ---------- รายโรงแรม ---------- */
+function renderHotel(body, ht){
+  if(!ht){ body.innerHTML='<div class="panel"><div class="empty">ไม่พบโรงแรมนี้ หรือคุณไม่มีสิทธิ์เข้าถึง</div></div>'; return; }
+  document.documentElement.style.setProperty('--accent', ht.color);
+  const months = periodMonths();
+  const A = aggPair([ht.id], months);
+  const b = A.b, c = A.c;
+  const fg = textOn(ht.color);
+
+  let h=`<div class="page-header" style="background:linear-gradient(135deg,${esc(ht.color)},${esc(shade(ht.color,-28))});color:${fg}">
+    <div class="eyebrow">รายงานรายโรงแรม · ${esc(periodLabel())}</div>
+    <h1>${esc(ht.name)}</h1><p>เปรียบเทียบ ${YB} กับ ${YC}</p></div>`;
+
+  if(!A.hasData){
+    h += `<div class="panel"><div class="empty">ยังไม่มีข้อมูลที่เทียบกันได้ในช่วงเวลานี้<br>
+      ${canEdit()?'ไปที่แท็บ “กรอกข้อมูล” เพื่อเพิ่ม หรือนำเข้าจาก Excel/CSV':'กรุณาให้ฝ่ายบัญชีกรอกข้อมูล'}</div></div>`;
+    body.innerHTML=h; return;
+  }
+  h += scopeNote(A, [ht.id]);
+
+  h+=`<div class="kpi-row">
+    ${kpiCard({label:'รายได้รวม', b:b.total_rev, c:c.total_rev})}
+    ${kpiCard({label:'GOP', b:b.gop, c:c.gop})}
+    ${kpiCard({label:'GOP Margin', type:'pct', b:b.total_rev?b.gop/b.total_rev*100:null, c:c.total_rev?c.gop/c.total_rev*100:null})}
+    ${kpiCard({label:'กำไรสุทธิ', b:b.net_profit, c:c.net_profit, hl:true})}
+    ${kpiCard({label:'Net Margin', type:'pct', b:b.total_rev?b.net_profit/b.total_rev*100:null, c:c.total_rev?c.net_profit/c.total_rev*100:null, hl:true})}
+    ${kpiCard({label:'อัตราเข้าพักเฉลี่ย', type:'pct', b:b.occ, c:c.occ,
+               note: A.opsWeighted?'ถ่วงน้ำหนักตามจำนวนห้องคืน':'ค่าเฉลี่ยอย่างง่าย (RevPAR ไม่ครบ)'})}
+  </div>`;
+
+  h+=`<div class="grid2">
+    <div class="panel"><h3>แนวโน้ม${COMPARE==='ytd'?'รายได้สะสม (YTD)':'รายได้รายเดือน (YoY)'}</h3>
+      <div class="cap">${YB} เทียบ ${YC}</div><div class="chart-box"><canvas id="hTrend"></canvas></div></div>
+    <div class="panel"><h3>แนวโน้ม GOP รายเดือน</h3><div class="cap">${YB} เทียบ ${YC}</div>
+      <div class="chart-box"><canvas id="hGop"></canvas></div></div>
+  </div>`;
+
+  h+=`<div class="grid2">
+    <div class="panel"><h3>สัดส่วนรายได้ (${YC})</h3><div class="cap">${esc(rangeLabel(A.months))} · รวม ฿${fmt(c.total_rev)}</div>
+      <div class="chart-box"><canvas id="hMix"></canvas></div></div>
+    <div class="panel"><h3>โครงสร้างค่าใช้จ่ายดำเนินงาน</h3><div class="cap">${YB} เทียบ ${YC}</div>
+      <div class="chart-box"><canvas id="hExp"></canvas></div></div>
+  </div>`;
+
+  const dedC=(c.gop||0)-(c.net_profit||0);
+  h+=`<div class="panel" style="margin-bottom:18px"><h3>🔎 เจาะลึกรายการใต้ GOP → กำไรสุทธิ</h3>
+    <div class="cap">แยกให้เห็นว่าอะไร “กิน” กำไรระหว่างทางจาก GOP ไปสู่กำไรสุทธิ · ${esc(rangeLabel(A.months))} · ${YB} เทียบ ${YC}</div>
+    <div class="bridge-strip">
+      <div class="bpill"><span class="bl">GOP ${YC}</span><span class="bv">฿${fmt(c.gop)}</span></div>
+      <span class="bop">−</span>
+      <div class="bpill neg"><span class="bl">รายการใต้ GOP</span><span class="bv">฿${fmt(dedC)}</span></div>
+      <span class="bop">=</span>
+      <div class="bpill pos"><span class="bl">กำไรสุทธิ ${YC}</span><span class="bv">฿${fmt(c.net_profit)}</span></div>
+      <span class="bnote">${c.gop>0?`คิดเป็น ${((dedC/c.gop)*100).toFixed(0)}% ของ GOP ที่หายไปกับรายการใต้เส้น`:''}</span>
+    </div>
+    <div class="grid2" style="margin:0">
+      <div><div class="cap" style="margin:6px 0 2px">องค์ประกอบรายการใต้ GOP (${YB} เทียบ ${YC})</div>
+        <div class="chart-box"><canvas id="hBelow"></canvas></div></div>
+      <div><div class="cap" style="margin:6px 0 2px">สัดส่วนรายการใต้ GOP (${YC})</div>
+        <div class="chart-box"><canvas id="hBelowMix"></canvas></div></div>
+    </div></div>`;
+
+  h+=`<div class="panel"><h3>งบกำไรขาดทุนรายเดือน</h3>
+    <div class="cap">${esc(periodLabel())} · ปี ${YC} · หน่วย: บาท</div>${plTable(ht, months, A)}</div>`;
+
+  h += insightSection(ht);
+  body.innerHTML = h;
+
+  /* ---- charts ---- */
+  const mlabels = months.map(m=>MONTHS_TH[m-1]);
+  const series = (year,key)=>months.map(m=>{ const r=rowOf(ht.id,year,m); return r && r[key]!=null ? r[key] : null; });
+  const trendB=series(YB,'total_rev'), trendC=series(YC,'total_rev');
+
+  if(COMPARE==='ytd'){
+    const cum=a=>{let s=0;return a.map(v=>v==null?null:(s+=v));};
+    mkChart('hTrend',{type:'line',data:{labels:mlabels,datasets:[
+      {label:String(YB),data:cum(trendB),borderColor:'#9fb0bf',backgroundColor:'transparent',tension:.3,borderWidth:2,pointRadius:3,spanGaps:false},
+      {label:String(YC),data:cum(trendC),borderColor:ht.color,backgroundColor:hexA(ht.color,.10),fill:true,tension:.3,borderWidth:3,pointRadius:3,spanGaps:false}
+    ]},options:lineOpts()});
+  } else {
+    mkChart('hTrend',{type:'bar',data:{labels:mlabels,datasets:[
+      {label:String(YB),data:trendB,backgroundColor:'#c3ced9',borderRadius:4},
+      {label:String(YC),data:trendC,backgroundColor:ht.color,borderRadius:4}
+    ]},options:lineOpts()});
+  }
+  mkChart('hGop',{type:'bar',data:{labels:mlabels,datasets:[
+    {label:String(YB),data:series(YB,'gop'),backgroundColor:'#c3ced9',borderRadius:4},
+    {label:String(YC),data:series(YC,'gop'),backgroundColor:hexA(ht.color,.85),borderRadius:4}
+  ]},options:lineOpts()});
+
+  const mix=[['rooms_rev','ห้องพัก'],['fb_rev','อาหาร&เครื่องดื่ม'],['other_rev','อื่นๆ']].filter(([k])=>c[k]>0);
+  mkChart('hMix',{type:'doughnut',data:{labels:mix.map(m=>m[1]),datasets:[{data:mix.map(m=>c[m[0]]),
+    backgroundColor:[ht.color,hexA(ht.color,.55),'#94a3b8'],borderWidth:2,borderColor:'#fff'}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8}},
+        tooltip:{callbacks:{label:x=>{const tot=mix.reduce((s,m)=>s+c[m[0]],0);
+          return x.label+': ฿'+fmt(x.parsed)+' ('+(x.parsed/tot*100).toFixed(1)+'%)';}}}},cutout:'58%'}});
+
+  const ex=[['rooms_exp','ห้องพัก'],['fb_exp','อาหาร'],['other_dept_exp','แผนกอื่น'],['ag_exp','A&G'],
+            ['sale_exp','การตลาด'],['maint_exp','ซ่อมบำรุง'],['util_exp','สาธารณูปโภค']].filter(([k])=>(b[k]||c[k]));
+  mkChart('hExp',{type:'bar',data:{labels:ex.map(e=>e[1]),datasets:[
+    {label:String(YB),data:ex.map(e=>b[e[0]]),backgroundColor:'#c3ced9',borderRadius:4},
+    {label:String(YC),data:ex.map(e=>c[e[0]]),backgroundColor:ht.color,borderRadius:4}
+  ]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8}},
+      tooltip:{callbacks:{label:x=>x.dataset.label+': ฿'+fmt(x.parsed.x)}}},
+    scales:{x:{ticks:{callback:v=>fmtM(v)}}}}});
+
+  const blB=belowBreakdown(b), blC=belowBreakdown(c);
+  const blLabels=[...new Set([...blB,...blC].map(x=>x[0]))];
+  const mapB=Object.fromEntries(blB), mapC=Object.fromEntries(blC);
+  mkChart('hBelow',{type:'bar',data:{labels:blLabels,datasets:[
+    {label:String(YB),data:blLabels.map(l=>mapB[l]||0),backgroundColor:'#c3ced9',borderRadius:4},
+    {label:String(YC),data:blLabels.map(l=>mapC[l]||0),backgroundColor:hexA(ht.color,.85),borderRadius:4}
+  ]},options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8}},
+      tooltip:{callbacks:{label:x=>x.dataset.label+': ฿'+fmt(x.parsed.y)}}},
+    scales:{y:{ticks:{callback:v=>fmtM(v)}}}}});
+  const palette=[ht.color,hexA(ht.color,.7),hexA(ht.color,.45),'#94a3b8','#cbd5e1','#e2e8f0'];
+  const blPos=blC.filter(x=>x[1]>0);
+  mkChart('hBelowMix',{type:'doughnut',data:{labels:blPos.map(x=>x[0]),datasets:[{data:blPos.map(x=>x[1]),
+    backgroundColor:blPos.map((_,i)=>palette[i%palette.length]),borderWidth:2,borderColor:'#fff'}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8}},
+        tooltip:{callbacks:{label:x=>x.label+': ฿'+fmt(x.parsed)}}},cutout:'58%'}});
+
+  wireInsights(ht);
+}
+
+function lineOpts(){ return {responsive:true,maintainAspectRatio:false,
+  plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8}},
+    tooltip:{callbacks:{label:c=>c.dataset.label+': ฿'+fmt(c.parsed.y)}}},
+  scales:{y:{ticks:{callback:v=>fmtM(v)}}}}; }
+
+/* ผลรวมของรายการย่อยจะเท่ากับ GOP − กำไรสุทธิ เสมอ ส่วนที่แยกไม่ได้รวมเป็น "อื่นๆ" */
+function belowBreakdown(a){
+  const items=[['rent','ค่าเช่า'],['depreciation','ค่าเสื่อมราคา'],['interest','ดอกเบี้ย'],
+    ['mgmt_fee','ค่าบริหารจัดการ'],['other_below','รายการอื่นใต้ GOP']]
+    .map(([k,l])=>[l, Math.abs(a[k]||0)]);
+  const known=items.reduce((s,x)=>s+x[1],0);
+  const residual=((a.gop||0)-(a.net_profit||0))-known;
+  if(residual>1) items.push(['อื่นๆ ใต้ GOP', residual]);
+  else if(residual<-1) items.push(['รายได้/หักกลบใต้ GOP', residual]);
+  return items.filter(x=>Math.abs(x[1])>0.5);
+}
+
+/* ---------- ตาราง P&L ---------- */
+function plTable(ht, months, A){
+  const b=A.b, c=A.c;
+  const dec = k => (k==='occ'||k==='adr'||k==='revpar') ? 1 : 0;
+  const isAvg = k => OPS_KEYS.includes(k);
+  const totalHdr = k => isAvg(k) ? 'เฉลี่ย' : 'รวม';
+
+  let h='<div class="table-scroll"><table class="data"><thead><tr><th class="lbl">รายการ</th>';
+  months.forEach(m=>{ const inScope=A.months.includes(m);
+    h+=`<th${inScope?'':' class="na"'}>${MONTHS_TH[m-1]}${inScope?'':' *'}</th>`; });
+  h+=`<th>รวม/เฉลี่ย ${YC}</th><th>รวม/เฉลี่ย ${YB}</th><th>Δ</th></tr></thead><tbody>`;
+
+  GROUPS.forEach(g=>{
+    h+=`<tr class="grp-head"><td colspan="${months.length+4}">${esc(g.t)}</td></tr>`;
+    g.keys.forEach(k=>{
+      h+=`<tr><td class="lbl">${esc(LABEL[k])}</td>`;
+      months.forEach(m=>{
+        const r=rowOf(ht.id,YC,m);
+        const val = r ? r[k] : null;
+        const dim = !A.months.includes(m);
+        h+=`<td${(val==null||dim)?' class="na"':''}>${val==null?'–':fmt(val,dec(k))}</td>`;
+      });
+      const goodUp = !(k.includes('exp')||k==='rent'||k==='depreciation'||k==='interest'
+                       ||k==='mgmt_fee'||k==='commission'||k==='other_below');
+      const mode = isAvg(k) && k==='occ' ? 'pp' : 'pct';
+      h+=`<td><b>${c[k]==null?'–':fmt(c[k],dec(k))}</b></td>
+          <td>${b[k]==null?'–':fmt(b[k],dec(k))}</td>
+          ${deltaCell(b[k], c[k], isAvg(k)?true:goodUp, mode)}</tr>`;
+    });
+  });
+  h+='</tbody></table></div>';
+
+  const notes=[];
+  notes.push(`คอลัมน์ <b>รวม/เฉลี่ย</b> คิดจากเดือนที่มีข้อมูลครบทั้งสองปีเท่านั้น (${esc(rangeLabel(A.months))})`);
+  notes.push('อัตราเข้าพัก / ADR / RevPAR เป็น <b>ค่าเฉลี่ย</b> ไม่ใช่ผลรวม' +
+             (A.opsWeighted?' (ถ่วงน้ำหนักตามจำนวนห้องคืน)':''));
+  if(months.some(m=>!A.months.includes(m))) notes.push('เดือนที่มีเครื่องหมาย * ไม่ถูกนำมารวม เพราะข้อมูลไม่ครบทั้งสองปี');
+  if(A.commMonths && A.commMonths.length && A.commMonths.length<A.months.length)
+    notes.push(`ค่าคอมมิชชั่น OTA คิดจาก ${esc(rangeLabel(A.commMonths))} เท่านั้น (เดือนอื่นไม่มีข้อมูลอย่างน้อยหนึ่งปี)`);
+  else if(A.commMonths && !A.commMonths.length) notes.push('ค่าคอมมิชชั่น OTA ยังไม่มีข้อมูลที่เทียบกันได้');
+  h+=`<div class="tbl-note">${notes.map(n=>'• '+n).join('<br>')}</div>`;
+  return h;
+}
+
+
+/* ============================================================
+   บทวิเคราะห์ / ความเห็นผู้บริหาร
+   ============================================================ */
+function insightSection(ht){
+  const hid = ht?ht.id:null;
+  const list = Store.insights
+    .filter(i => (ht ? i.hotel_id===hid : (i.hotel_id==null)) && (i.year==null || +i.year===YC))
+    .sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+  let h=`<div class="section-title"><h2>บทวิเคราะห์ &amp; ความเห็นผู้บริหาร</h2><div class="line"></div>
+    ${canEdit()?`<button type="button" class="btn btn-accent btn-sm noprint" data-add-insight="1">+ เพิ่มความเห็น</button>`:''}</div>
+    <div class="insights">`;
+  if(!list.length){
+    h+=`<div class="empty">ยังไม่มีบทวิเคราะห์สำหรับปี ${YC}${canEdit()?' — กด “เพิ่มความเห็น” เพื่อใส่ข้อความ':''}</div>`;
+  }
+  list.forEach(i=>{
+    const kind = ['good','warn','neutral','info'].includes(i.kind)?i.kind:'info';
+    const kb = {good:'ดี',warn:'เฝ้าระวัง',neutral:'ข้อสังเกต',info:'ข้อมูล'}[kind];
+    h+=`<div class="insight ${kind}"><div class="ttl"><span class="badge ${kind}">${kb}</span>${esc(i.title)}</div>
+      <div class="body">${esc(i.body).replace(/\n/g,'<br>')}</div>
+      ${canEdit()?`<div class="tools noprint">
+        <button type="button" class="btn btn-soft btn-sm" data-edit-insight="${esc(i.id)}">แก้ไข</button>
+        <button type="button" class="btn btn-danger btn-sm" data-del-insight="${esc(i.id)}">ลบ</button></div>`:''}</div>`;
+  });
+  return h+'</div>';
+}
+function wireInsights(ht){
+  const hid = ht?ht.id:null;
+  document.querySelectorAll('[data-add-insight]').forEach(b=>b.onclick=()=>
+    insightModal({hotel_id:hid, year:YC, kind:'info', sort_order:(Store.insights.length+1)*10}));
+  document.querySelectorAll('[data-edit-insight]').forEach(b=>b.onclick=()=>{
+    const it=Store.insights.find(x=>String(x.id)===b.dataset.editInsight); if(it) insightModal({...it}); });
+  document.querySelectorAll('[data-del-insight]').forEach(b=>b.onclick=async()=>{
+    if(!confirm('ลบความเห็นนี้?')) return;
+    try{ await dbDeleteInsight(b.dataset.delInsight); toast('ลบแล้ว'); render(); }
+    catch(e){ alert('ลบไม่สำเร็จ: '+e.message); } });
+}
+function insightModal(o){
+  const kinds=[['good','ดี (เขียว)'],['warn','เฝ้าระวัง (แดง)'],['neutral','ข้อสังเกต (ทอง)'],['info','ข้อมูล (น้ำเงิน)']];
+  showModal(`<h3>${o.id?'แก้ไข':'เพิ่ม'}บทวิเคราะห์ / ความเห็น</h3>
+    <div class="field"><label>ประเภท</label><select id="mKind">
+      ${kinds.map(k=>`<option value="${k[0]}" ${o.kind===k[0]?'selected':''}>${k[1]}</option>`).join('')}</select></div>
+    <div class="field"><label>หัวข้อ</label><input id="mTitle" value="${esc(o.title)}" placeholder="เช่น GOP ลดลงจากค่าคอมมิชชั่น OTA"></div>
+    <div class="field"><label>รายละเอียด</label><textarea id="mBody" placeholder="พิมพ์ความเห็น/บทวิเคราะห์…">${esc(o.body)}</textarea></div>
+    <div class="field"><label>ลำดับการแสดง (น้อยขึ้นก่อน)</label><input id="mOrder" type="number" value="${o.sort_order||10}"></div>
+    <div class="field"><label>แสดงในปี</label><input id="mYear" type="number" value="${o.year||YC}"></div>
+    <div class="modal-actions"><button type="button" class="btn btn-soft" onclick="closeModal()">ยกเลิก</button>
+      <button type="button" class="btn btn-primary" id="mSave">บันทึก</button></div>`);
+  document.getElementById('mSave').onclick=async()=>{
+    const payload={kind:document.getElementById('mKind').value,
+      title:document.getElementById('mTitle').value.trim(),
+      body:document.getElementById('mBody').value,
+      sort_order:+document.getElementById('mOrder').value||10,
+      hotel_id:o.hotel_id??null, year:+document.getElementById('mYear').value||null};
+    if(!payload.title){ alert('กรุณากรอกหัวข้อ'); return; }
+    if(o.id) payload.id=o.id;
+    try{ await dbUpsertInsight(payload); closeModal(); toast('บันทึกแล้ว'); render(); }
+    catch(e){ alert('บันทึกไม่สำเร็จ: '+e.message); }
+  };
+}
+
+/* ============================================================
+   กรอกข้อมูล — ช่องที่คำนวณได้จะคำนวณให้อัตโนมัติ (แก้ไม่ได้)
+   จึงรับประกันว่าตัวเลขบวกลงตัวเสมอ
+   ============================================================ */
+let ENTRY_HOTEL=null, ENTRY_YEAR=null;
+
+function computeMonth(vals){
+  const g=k=>{ const v=vals[k]; return (v==null||v==='' ||isNaN(v))?0:+v; };
+  const total_rev = REV_PARTS.reduce((s,k)=>s+g(k),0);
+  const total_exp = EXP_PARTS.reduce((s,k)=>s+g(k),0);
+  const gop       = total_rev - total_exp;
+  const below_gop = -BELOW_PARTS.reduce((s,k)=>s+g(k),0);
+  return {total_rev, total_exp, gop, below_gop, net_profit: gop+below_gop};
+}
+function readGridMonth(m){
+  const vals={};
+  document.querySelectorAll(`.entry-grid input[data-m="${m}"]`).forEach(inp=>{
+    const raw=inp.value.trim().replace(/,/g,'');
+    vals[inp.dataset.k] = raw==='' ? null : parseFloat(raw);
+  });
+  return vals;
+}
+function refreshDerived(){
+  let filled=0;
+  for(let m=1;m<=12;m++){
+    const vals=readGridMonth(m);
+    const anyInput = NUM_KEYS.filter(k=>!DERIVED.includes(k)).some(k=>vals[k]!=null&&!isNaN(vals[k]));
+    const d=computeMonth(vals);
+    DERIVED.forEach(k=>{
+      const i=document.querySelector(`.entry-grid input[data-k="${k}"][data-m="${m}"]`);
+      if(i) i.value = anyInput ? d[k].toFixed(2) : '';
+    });
+    if(anyInput) filled++;
+  }
+  const s=document.getElementById('entryCheck');
+  if(s){ s.className='check-strip ok';
+    s.innerHTML = filled
+      ? `✔ ตรวจแล้ว: มีข้อมูล <b>${filled}</b> เดือน · ช่องสีเทาคำนวณให้อัตโนมัติ (รายได้รวม / ค่าใช้จ่ายรวม / GOP / รวมรายการใต้ GOP / กำไรสุทธิ) จึงบวกลงตัวเสมอ`
+      : 'ยังไม่มีข้อมูลในปีนี้ — เริ่มกรอกได้เลย ช่องสีเทาจะคำนวณให้อัตโนมัติ';
+  }
+}
+
+function renderEntry(v){
+  const vh = visibleHotels().length ? visibleHotels() : activeHotels();
+  if(!ENTRY_HOTEL || !vh.find(h=>h.code===ENTRY_HOTEL)) ENTRY_HOTEL = vh[0]?vh[0].code:null;
+  const yrs=availableYears();
+  if(!ENTRY_YEAR) ENTRY_YEAR = YC || yrs[yrs.length-1];
+  const yearOpts=[...new Set([...yrs, ENTRY_YEAR, ENTRY_YEAR+1])].sort((a,b)=>a-b);
+
+  let h=`<div class="page-header" style="background:linear-gradient(135deg,#334155,#1f2937);color:#fff">
+    <div class="eyebrow">โหมดกรอกข้อมูล</div>
+    <h1>กรอก / นำเข้าข้อมูล P&amp;L</h1><p>กรอกมือ หรือ นำเข้าไฟล์ Excel/CSV ได้เลย</p></div>`;
+
+  if(!vh.length){ v.innerHTML = h+'<div class="panel"><div class="empty">ไม่มีโรงแรมที่คุณมีสิทธิ์แก้ไข</div></div>'; return; }
+
+  h+=`<div class="toolbar">
+    <div class="ctl"><label for="eHotel">โรงแรม</label>
+      <select id="eHotel">${vh.map(x=>`<option value="${esc(x.code)}" ${x.code===ENTRY_HOTEL?'selected':''}>${esc(x.name)}</option>`).join('')}</select></div>
+    <div class="ctl"><label for="eYear">ปี</label>
+      <select id="eYear">${yearOpts.map(y=>`<option value="${y}" ${y===ENTRY_YEAR?'selected':''}>${y}</option>`).join('')}</select></div>
+    <div class="spacer"></div>
+    <button type="button" class="btn btn-primary btn-sm" id="btnSaveEntry">💾 บันทึกข้อมูลปีนี้</button>
+  </div>`;
+
+  h+=`<div class="toolbar" style="background:#f6f8fb;border:1px solid var(--line);border-radius:12px;padding:12px 14px">
+    <b style="font-size:13px">นำเข้า / ส่งออก:</b>
+    <button type="button" class="btn btn-soft btn-sm" id="btnTemplate" ${LIB.xlsx?'':'disabled'}>⬇ ดาวน์โหลดเทมเพลตเปล่า</button>
+    <label class="btn btn-soft btn-sm" style="margin:0">⬆ นำเข้า Excel/CSV
+      <input type="file" id="fileImp" accept=".xlsx,.xls,.csv" class="hidden" ${LIB.xlsx?'':'disabled'}></label>
+    <button type="button" class="btn btn-soft btn-sm" id="btnExpXlsx" ${LIB.xlsx?'':'disabled'}>⬇ ส่งออกทั้งหมด (Excel)</button>
+    <button type="button" class="btn btn-soft btn-sm" id="btnExpCsv" ${LIB.xlsx?'':'disabled'}>⬇ ส่งออกทั้งหมด (CSV)</button>
+    <span class="spacer"></span>
+    <span style="font-size:11.5px;color:var(--ink-mute)">${LIB.xlsx?'การนำเข้าจะแทนที่ข้อมูลเดือน/ปี/โรงแรมที่ตรงกัน':'⚠ โหลดไลบรารี Excel ไม่สำเร็จ — ใช้นำเข้า/ส่งออกไม่ได้'}</span>
+  </div>`;
+
+  h+=`<div id="entryCheck" class="check-strip ok"></div>`;
+
+  const ht=hotelByCode(ENTRY_HOTEL);
+  h+=`<div class="panel entry-grid"><div class="table-scroll"><table class="data"><thead><tr>
+    <th class="lbl">รายการ \\ เดือน</th>${MONTHS_TH.map(m=>`<th>${m}</th>`).join('')}</tr></thead><tbody>`;
+  GROUPS.forEach(g=>{
+    h+=`<tr class="grp-head"><td colspan="13">${esc(g.t)}</td></tr>`;
+    g.keys.forEach(k=>{
+      const auto=DERIVED.includes(k);
+      h+=`<tr><td class="lbl">${esc(LABEL[k])}${auto?' <span style="font-weight:400;color:var(--ink-mute)">(อัตโนมัติ)</span>':''}</td>`;
+      for(let m=1;m<=12;m++){
+        const r = ht ? rowOf(ht.id, ENTRY_YEAR, m) : null;
+        const val = (r && r[k]!=null) ? r[k] : '';
+        h+=`<td><input inputmode="decimal" data-k="${k}" data-m="${m}" value="${val}"
+             class="${auto?'calc':''}" ${auto?'readonly tabindex="-1"':''}></td>`;
+      }
+      h+='</tr>';
+    });
+  });
+  h+='</tbody></table></div></div>';
+  v.innerHTML=h;
+
+  document.getElementById('eHotel').onchange=e=>{ENTRY_HOTEL=e.target.value;render();};
+  document.getElementById('eYear').onchange =e=>{ENTRY_YEAR=+e.target.value;render();};
+  document.getElementById('btnSaveEntry').onclick=saveEntry;
+  const t=document.getElementById('btnTemplate'); if(t) t.onclick=downloadTemplate;
+  const x=document.getElementById('btnExpXlsx'); if(x) x.onclick=()=>exportData('xlsx');
+  const cv=document.getElementById('btnExpCsv'); if(cv) cv.onclick=()=>exportData('csv');
+  const f=document.getElementById('fileImp'); if(f) f.onchange=importFile;
+  document.querySelectorAll('.entry-grid input:not(.calc)').forEach(i=>i.addEventListener('input', refreshDerived));
+  refreshDerived();
+}
+
+async function saveEntry(){
+  const ht=hotelByCode(ENTRY_HOTEL); if(!ht) return;
+  const rows=[];
+  for(let m=1;m<=12;m++){
+    const vals=readGridMonth(m);
+    const manual = NUM_KEYS.filter(k=>!DERIVED.includes(k));
+    if(!manual.some(k=>vals[k]!=null && !isNaN(vals[k]))) continue;
+    const d=computeMonth(vals);
+    const row={hotel_id:ht.id, year:ENTRY_YEAR, month:m};
+    NUM_KEYS.forEach(k=>{
+      if(DERIVED.includes(k)) row[k]=+d[k].toFixed(2);
+      else if(OPS_KEYS.includes(k)||k==='commission') row[k]=(vals[k]==null||isNaN(vals[k]))?null:vals[k];
+      else row[k]=(vals[k]==null||isNaN(vals[k]))?0:vals[k];
+    });
+    rows.push(row);
+  }
+  if(!rows.length){ toast('ไม่มีข้อมูลให้บันทึก'); return; }
+  const btn=document.getElementById('btnSaveEntry'); btn.disabled=true;
+  try{ await dbUpsertPL(rows); toast(`บันทึก ${rows.length} เดือนแล้ว`); render(); }
+  catch(e){ alert('บันทึกไม่สำเร็จ: '+e.message); }
+  finally{ if(document.getElementById('btnSaveEntry')) document.getElementById('btnSaveEntry').disabled=false; }
+}
+
+/* ---------- นำเข้า / ส่งออก ---------- */
+const HEADER_LOOKUP = (()=>{ const m={};
+  Object.entries(TH_HEADERS).forEach(([k,th])=>{ m[th.trim()]=k; m[k]=k; }); return m; })();
+
+/**
+ * อ่านไฟล์ให้รองรับภาษาไทยทุกกรณี
+ *  - .xlsx / .xls  → อ่านเป็นไบนารี
+ *  - .csv / .txt   → ถอดรหัสเป็นข้อความเอง (UTF-8 มี/ไม่มี BOM และ windows-874 ของ Excel ไทย)
+ *    เพราะถ้าปล่อยให้ SheetJS เดาเอง ไฟล์ UTF-8 ที่ไม่มี BOM จะกลายเป็นตัวอักษรเพี้ยน
+ */
+function readWorkbook(arrayBuffer){
+  const bytes = new Uint8Array(arrayBuffer);
+  const isXlsx = bytes[0]===0x50 && bytes[1]===0x4B;                 // "PK" (zip)
+  const isXls  = bytes[0]===0xD0 && bytes[1]===0xCF;                 // OLE2 (xls เก่า)
+  if(isXlsx || isXls) return XLSX.read(bytes, {type:'array'});
+
+  let text;
+  try{ text = new TextDecoder('utf-8').decode(bytes); }
+  catch(e){ text = String.fromCharCode.apply(null, bytes); }
+  if(/�/.test(text)){                                           // ไม่ใช่ UTF-8 → ลองรหัสไทยของ Windows
+    for(const enc of ['windows-874','tis-620']){
+      try{ const t=new TextDecoder(enc).decode(bytes); if(!/�/.test(t)){ text=t; break; } }catch(e){}
+    }
+  }
+  if(text.charCodeAt(0)===0xFEFF) text = text.slice(1);              // ตัด BOM ทิ้ง
+  return XLSX.read(text, {type:'string'});
+}
+
+function importFile(e){
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onerror=()=>alert('อ่านไฟล์ไม่สำเร็จ');
+  rd.onload = async ev => {
+    try{
+      const wb  = readWorkbook(ev.target.result);
+      const ws  = wb.Sheets[wb.SheetNames[0]];
+      const arr = XLSX.utils.sheet_to_json(ws,{defval:null});
+      if(!arr.length){ alert('ไฟล์ว่าง ไม่มีข้อมูลให้นำเข้า'); return; }
+
+      const allowed = new Set(visibleHotels().map(h=>h.id));
+      const rows=[], problems=[];
+      arr.forEach((raw,idx)=>{
+        const line = idx+2;
+        const o={}; Object.entries(raw).forEach(([hd,val])=>{
+          const key=HEADER_LOOKUP[String(hd).trim()]; if(key) o[key]=val; });
+
+        let ht=null;
+        if(o.hotel_code) ht = hotelByCode(String(o.hotel_code).trim().toLowerCase());
+        if(!ht && o.hotel_name) ht = Store.hotels.find(x=>x.name.trim()===String(o.hotel_name).trim());
+        if(!ht){ problems.push(`บรรทัด ${line}: ไม่รู้จักโรงแรม`); return; }
+        if(!allowed.has(ht.id)){ problems.push(`บรรทัด ${line}: ไม่มีสิทธิ์แก้ ${ht.name}`); return; }
+        const yr=+o.year, mo=+o.month;
+        if(!yr || !(mo>=1&&mo<=12)){ problems.push(`บรรทัด ${line}: ปี/เดือนไม่ถูกต้อง`); return; }
+
+        const num=k=>{ const val=o[k];
+          if(val==null||val==='') return null;
+          const n=parseFloat(String(val).replace(/,/g,'')); return isNaN(n)?null:n; };
+        const vals={}; NUM_KEYS.forEach(k=>vals[k]=num(k));
+        const d=computeMonth(vals);
+
+        // ถ้าไฟล์ระบุยอดรวมมาเองและไม่ตรงกับผลรวมย่อย → เตือนแต่ยังนำเข้าโดยใช้ค่าที่คำนวณได้
+        DERIVED.forEach(k=>{ if(vals[k]!=null && Math.abs(vals[k]-d[k])>1)
+          problems.push(`บรรทัด ${line}: ${LABEL[k]} ในไฟล์ (${fmt(vals[k])}) ไม่ตรงกับผลรวมย่อย (${fmt(d[k])}) — ใช้ค่าที่คำนวณได้`); });
+
+        const row={hotel_id:ht.id, year:yr, month:mo};
+        NUM_KEYS.forEach(k=>{
+          if(DERIVED.includes(k)) row[k]=+d[k].toFixed(2);
+          else if(OPS_KEYS.includes(k)||k==='commission') row[k]=vals[k];
+          else row[k]=vals[k]==null?0:vals[k];
+        });
+        rows.push(row);
+      });
+
+      if(!rows.length){
+        alert('ไม่พบแถวที่นำเข้าได้\n\n'+problems.slice(0,10).join('\n')+
+              '\n\nตรวจสอบว่าหัวคอลัมน์ตรงกับเทมเพลต และมีคอลัมน์ “รหัสโรงแรม / ปี(ค.ศ.) / เดือน(1-12)”');
+        return;
+      }
+      await dbUpsertPL(rows);
+      toast(`นำเข้าสำเร็จ ${rows.length} แถว${problems.length?` (มีข้อสังเกต ${problems.length} รายการ)`:''}`);
+      if(problems.length) alert('นำเข้าเรียบร้อย แต่มีข้อสังเกต:\n\n'+problems.slice(0,20).join('\n')+
+        (problems.length>20?`\n… และอีก ${problems.length-20} รายการ`:''));
+      render();
+    }catch(err){ console.error(err); alert('นำเข้าไม่สำเร็จ: '+err.message); }
+  };
+  rd.readAsArrayBuffer(f);
+  e.target.value='';
+}
+
+function buildSheetAOA(filter){
+  const keys=Object.keys(TH_HEADERS);
+  const aoa=[Object.values(TH_HEADERS)];
+  const src=Store.pl.filter(filter).sort((a,b)=>{
+    const ha=hotelById(a.hotel_id), hb=hotelById(b.hotel_id);
+    return ((ha&&ha.sort_order)||0)-((hb&&hb.sort_order)||0) || a.year-b.year || a.month-b.month; });
+  src.forEach(r=>{
+    const ht=hotelById(r.hotel_id);
+    aoa.push(keys.map(k=>{
+      if(k==='hotel_code') return ht?ht.code:'';
+      if(k==='hotel_name') return ht?ht.name:'';
+      if(k==='year')  return r.year;
+      if(k==='month') return r.month;
+      return r[k]==null?'':r[k];
+    }));
+  });
+  return aoa;
+}
+function exportData(kind){
+  const ws=XLSX.utils.aoa_to_sheet(buildSheetAOA(()=>true));
+  if(kind==='csv'){
+    downloadBlob('﻿'+XLSX.utils.sheet_to_csv(ws), 'PLAAI_PnL_export.csv', 'text/csv;charset=utf-8;');
+  } else {
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'PLAAI_PnL');
+    XLSX.writeFile(wb,'PLAAI_PnL_export.xlsx');
+  }
+}
+function downloadTemplate(){
+  const ht=hotelByCode(ENTRY_HOTEL)||visibleHotels()[0]; if(!ht) return;
+  const keys=Object.keys(TH_HEADERS);
+  const aoa=[Object.values(TH_HEADERS)];
+  for(let m=1;m<=3;m++){
+    aoa.push(keys.map(k=> k==='hotel_code'?ht.code : k==='hotel_name'?ht.name
+      : k==='year'?ENTRY_YEAR : k==='month'?m : ''));
+  }
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Template');
+  XLSX.writeFile(wb,'PLAAI_เทมเพลตกรอกข้อมูล.xlsx');
+}
+function downloadBlob(content,name,type){
+  const b=new Blob([content],{type}); const u=URL.createObjectURL(b);
+  const a=document.createElement('a'); a.href=u; a.download=name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(u), 2000);
+}
+
+
+/* ============================================================
+   จัดการโรงแรม (เจ้าของเท่านั้น)
+   ============================================================ */
+function renderHotelsAdmin(v){
+  let h=`<div class="page-header" style="background:linear-gradient(135deg,#334155,#1f2937);color:#fff">
+    <div class="eyebrow">ตั้งค่า</div><h1>จัดการโรงแรม</h1>
+    <p>เพิ่ม / แก้ชื่อ / เปลี่ยนสี / ซ่อน / ลบ — รองรับการขยายสาขาในอนาคต</p></div>`;
+  h+=`<div class="toolbar"><span class="spacer"></span>
+      <button type="button" class="btn btn-primary btn-sm" id="addHotel">+ เพิ่มโรงแรม</button></div>`;
+  Store.hotels.slice().sort((a,b)=>(a.sort_order||0)-(b.sort_order||0)).forEach(ht=>{
+    const n=Store.pl.filter(r=>r.hotel_id===ht.id).length;
+    const cr=(1.05)/(relLum(ht.color)+0.05);
+    const warn = (cr<3 && cr>1/3) ? ' <span style="color:var(--neg)">· สีนี้อ่านยาก</span>' : '';
+    h+=`<div class="list-row"><span class="dot" style="background:${esc(ht.color)}"></span>
+      <div class="grow"><div class="nm">${esc(ht.name)} ${ht.active===false?'<span class="meta">(ซ่อนอยู่)</span>':''}</div>
+        <div class="meta">รหัส: ${esc(ht.code)} · ลำดับ: ${ht.sort_order} · ข้อมูล ${n} เดือน${warn}</div></div>
+      <button type="button" class="btn btn-soft btn-sm" data-edit-h="${esc(ht.id)}">แก้ไข</button>
+      <button type="button" class="btn btn-danger btn-sm" data-del-h="${esc(ht.id)}">ลบ</button></div>`;
+  });
+  v.innerHTML=h;
+  document.getElementById('addHotel').onclick=()=>hotelModal({color:'#2563EB',
+    sort_order:(Store.hotels.length+1), active:true});
+  document.querySelectorAll('[data-edit-h]').forEach(b=>b.onclick=()=>{
+    const ht=Store.hotels.find(x=>String(x.id)===b.dataset.editH); if(ht) hotelModal({...ht}); });
+  document.querySelectorAll('[data-del-h]').forEach(b=>b.onclick=async()=>{
+    const ht=Store.hotels.find(x=>String(x.id)===b.dataset.delH); if(!ht) return;
+    const n=Store.pl.filter(r=>r.hotel_id===ht.id).length;
+    if(!confirm(`ลบ "${ht.name}" และข้อมูล P&L ทั้งหมด ${n} เดือน?\n\nถ้าต้องการเก็บข้อมูลไว้ ให้กด “แก้ไข” แล้วเอาเครื่องหมายถูกออกจาก “แสดงในรายงาน” แทน`)) return;
+    try{ await dbDeleteHotel(ht.id); toast('ลบแล้ว'); render(); }
+    catch(e){ alert('ลบไม่สำเร็จ: '+e.message); } });
+}
+function hotelModal(o){
+  const isEdit=!!o.id;
+  showModal(`<h3>${isEdit?'แก้ไข':'เพิ่ม'}โรงแรม</h3>
+    <div class="field"><label>ชื่อโรงแรม</label><input id="hName" value="${esc(o.name)}" placeholder="เช่น PLAAI Prime"></div>
+    <div class="field"><label>รหัสสั้น (ภาษาอังกฤษ, ห้ามซ้ำ)</label><input id="hCode" value="${esc(o.code)}" placeholder="เช่น prime">
+      <div class="hint">ใช้ในไฟล์ Excel/CSV และการกำหนดสิทธิ์ผู้จัดการ</div></div>
+    <div class="field"><label>สีประจำโรงแรม</label>
+      <input id="hColor" type="color" value="${esc(o.color||'#2563EB')}" style="height:44px;padding:4px">
+      <div class="hint" id="hContrast"></div></div>
+    <div class="field"><label>ลำดับการแสดง</label><input id="hOrder" type="number" value="${o.sort_order||100}"></div>
+    <div class="field"><label><input id="hActive" type="checkbox" ${o.active!==false?'checked':''}> แสดงในรายงาน (ไม่ติ๊ก = ซ่อน)</label></div>
+    <div class="modal-actions"><button type="button" class="btn btn-soft" onclick="closeModal()">ยกเลิก</button>
+      <button type="button" class="btn btn-primary" id="hSave">บันทึก</button></div>`);
+  const col=document.getElementById('hColor'), note=document.getElementById('hContrast');
+  const showCr=()=>{ const cr=(1.05)/(relLum(col.value)+0.05);
+    const ok = cr>=4.5 || relLum(col.value)<0.18;
+    note.innerHTML = ok ? 'สีนี้อ่านง่าย ✔'
+      : `<span style="color:var(--neg)">สีนี้อ่านยากเมื่อใช้เป็นพื้นหลัง — แนะนำให้เลือกสีเข้มกว่านี้</span>`;
+  };
+  col.oninput=showCr; showCr();
+  document.getElementById('hSave').onclick=async()=>{
+    const code=document.getElementById('hCode').value.trim().toLowerCase();
+    const name=document.getElementById('hName').value.trim();
+    if(!code||!name){ alert('กรุณากรอกชื่อและรหัส'); return; }
+    if(!/^[a-z0-9_-]+$/.test(code)){ alert('รหัสสั้นใช้ได้เฉพาะ a-z, 0-9, - และ _'); return; }
+    const dup=Store.hotels.find(x=>x.code===code && x.id!==o.id);
+    if(dup){ alert('รหัสนี้มีอยู่แล้ว: '+dup.name); return; }
+    const payload={code, name, color:col.value,
+      sort_order:+document.getElementById('hOrder').value||100,
+      active:document.getElementById('hActive').checked};
+    if(o.id) payload.id=o.id;
+    try{ await dbUpsertHotel(payload); closeModal(); toast('บันทึกแล้ว'); render(); }
+    catch(e){ alert('บันทึกไม่สำเร็จ: '+e.message); }
+  };
+}
+
+/* ============================================================
+   ผู้ใช้งาน (เจ้าของเท่านั้น) — ไม่แสดงรหัสผ่านบนหน้าจอ
+   ============================================================ */
+async function loadUsers(){
+  if(USE_CLOUD){
+    const {data,error}=await sb.rpc('app_list_users');
+    if(error) throw prettyDbError(error);
+    Store.users=data||[];
+  } else { Store.users=LOCAL_USERS.map(u=>({...u, pin:undefined})); }
+}
+async function renderUsersAdmin(v){
+  const seq = RENDER_SEQ;
+  const head = `<div class="page-header" style="background:linear-gradient(135deg,#334155,#1f2937);color:#fff">
+    <div class="eyebrow">ตั้งค่า</div><h1>ผู้ใช้งาน &amp; สิทธิ์</h1>
+    <p>เจ้าของแก้ไขได้ทุกหน้า · ฝ่ายบัญชีกรอกข้อมูลได้ทุกโรงแรม · ผู้จัดการเห็นเฉพาะโรงแรมที่กำหนด</p></div>`;
+  v.innerHTML = head + '<div class="panel"><div class="empty">กำลังโหลด…</div></div>';
+  try{ await loadUsers(); }
+  catch(e){ if(seq!==RENDER_SEQ) return;
+    v.innerHTML = head + `<div class="panel"><div class="empty">โหลดรายชื่อผู้ใช้ไม่สำเร็จ: ${esc(e.message)}</div></div>`; return; }
+  if(seq!==RENDER_SEQ) return;
+
+  let h = head;
+  h+=`<div class="scope-note"><span>🔒</span><span>ระบบไม่เก็บรหัสผ่านเป็นข้อความธรรมดา และไม่แสดงรหัสผ่านบนหน้าจอ
+      หากผู้ใช้ลืมรหัส ให้กด “แก้ไข” แล้วตั้งรหัสใหม่ให้ · สิทธิ์ทั้งหมดถูกบังคับที่ฐานข้อมูล
+      ผู้จัดการจึงดึงข้อมูลโรงแรมอื่นไม่ได้แม้จะพยายามแก้ไขหน้าเว็บ</span></div>`;
+  if(!USE_CLOUD) h+=`<div class="scope-note warn"><span>⚠</span><span>โหมดตัวอย่าง (LOCAL) —
+      จัดการผู้ใช้ได้เฉพาะเมื่อเชื่อมต่อฐานข้อมูลจริง</span></div>`;
+  h+=`<div class="toolbar"><span class="spacer"></span>
+      <button type="button" class="btn btn-primary btn-sm" id="addUser" ${USE_CLOUD?'':'disabled'}>+ เพิ่มผู้ใช้</button></div>`;
+  Store.users.forEach(u=>{
+    const roleTxt=u.role==='owner'?'เจ้าของ':u.role==='accounting'?'ฝ่ายบัญชี':'ผู้จัดการ';
+    const scope=(u.role==='owner'||u.role==='accounting') ? 'ทุกโรงแรม'
+      : ((u.scope_codes||[]).map(c=>{const ht=hotelByCode(c);return ht?ht.name:c;}).join(', ')||'—');
+    h+=`<div class="list-row"><span class="dot" style="background:${u.can_edit?'var(--pos)':'var(--neutral)'}"></span>
+      <div class="grow"><div class="nm">${esc(u.name)} <span class="meta">· ${roleTxt} · ${u.can_edit?'แก้ไขข้อมูลได้':'ดูอย่างเดียว'}</span></div>
+        <div class="meta">ชื่อผู้ใช้: <b>${esc(u.username)}</b> · เห็น: ${esc(scope)}${u.can_see_overview?' + ภาพรวม':''}</div></div>
+      <button type="button" class="btn btn-soft btn-sm" data-edit-u="${esc(u.id)}" ${USE_CLOUD?'':'disabled'}>แก้ไข</button>
+      ${(String(u.id)===String(ME.id)||!USE_CLOUD)?'':`<button type="button" class="btn btn-danger btn-sm" data-del-u="${esc(u.id)}">ลบ</button>`}</div>`;
+  });
+  v.innerHTML=h;
+  document.getElementById('addUser').onclick=()=>userModal({role:'manager',scope_codes:[],
+    can_see_overview:true, can_edit:false});
+  document.querySelectorAll('[data-edit-u]').forEach(b=>b.onclick=()=>{
+    const u=Store.users.find(x=>String(x.id)===b.dataset.editU); if(u) userModal({...u}); });
+  document.querySelectorAll('[data-del-u]').forEach(b=>b.onclick=async()=>{
+    if(!confirm('ลบผู้ใช้นี้?')) return;
+    try{
+      if(USE_CLOUD){ const {error}=await sb.rpc('app_delete_user',{p_id:b.dataset.delU}); if(error) throw prettyDbError(error); }
+      toast('ลบแล้ว'); render();
+    }catch(e){ alert('ลบไม่สำเร็จ: '+e.message); } });
+}
+function userModal(o){
+  const isEdit=!!o.id;
+  const chips=activeHotels().map(ht=>
+    `<label><input type="checkbox" class="scopeChk" value="${esc(ht.code)}"
+      ${(o.scope_codes||[]).includes(ht.code)?'checked':''}> ${esc(ht.name)}</label>`).join('');
+  showModal(`<h3>${isEdit?'แก้ไข':'เพิ่ม'}ผู้ใช้งาน</h3>
+    <div class="field"><label>ชื่อที่แสดง</label><input id="uName" value="${esc(o.name)}"></div>
+    <div class="field"><label>ชื่อผู้ใช้ (Username)</label><input id="uUsername" value="${esc(o.username)}" placeholder="เช่น prime" autocapitalize="off"></div>
+    <div class="field"><label>รหัสผ่าน${isEdit?' ใหม่':''}</label>
+      <input id="uPin" type="text" value="" autocomplete="new-password" placeholder="${isEdit?'เว้นว่างไว้ = ใช้รหัสเดิม':'อย่างน้อย 6 ตัวอักษร'}">
+      <div class="hint">แนะนำอย่างน้อย 8 ตัว ผสมตัวอักษร ตัวเลข และอักขระพิเศษ · เปลี่ยนรหัสแล้วผู้ใช้จะถูกออกจากระบบทุกเครื่อง</div></div>
+    <div class="field"><label>บทบาท</label><select id="uRole">
+      <option value="owner" ${o.role==='owner'?'selected':''}>เจ้าของ (แก้ได้ทุกอย่าง รวมผู้ใช้และโรงแรม)</option>
+      <option value="accounting" ${o.role==='accounting'?'selected':''}>ฝ่ายบัญชี (กรอกข้อมูลได้ทุกโรงแรม แต่แก้ผู้ใช้ไม่ได้)</option>
+      <option value="manager" ${o.role==='manager'?'selected':''}>ผู้จัดการ (เห็นเฉพาะโรงแรมที่กำหนด)</option></select></div>
+    <div class="field" id="scopeWrap"><label>โรงแรมที่ผู้จัดการเข้าถึงได้</label><div class="chips">${chips}</div></div>
+    <div class="field"><label><input id="uOverview" type="checkbox" ${o.can_see_overview?'checked':''}> เห็นหน้า “ภาพรวม”</label></div>
+    <div class="field" id="editWrap"><label><input id="uEdit" type="checkbox" ${o.can_edit?'checked':''}> กรอก/แก้ไขข้อมูล P&amp;L ได้</label>
+      <div class="hint">ผู้จัดการที่ติ๊กช่องนี้จะกรอกข้อมูลได้เฉพาะโรงแรมของตัวเอง และยังเข้าหน้า “ผู้ใช้งาน” ไม่ได้</div></div>
+    <div class="modal-actions"><button type="button" class="btn btn-soft" onclick="closeModal()">ยกเลิก</button>
+      <button type="button" class="btn btn-primary" id="uSave">บันทึก</button></div>`);
+  const roleSel=document.getElementById('uRole');
+  const sync=()=>{ const mgr=roleSel.value==='manager';
+    document.getElementById('scopeWrap').style.display = mgr?'':'none';
+    document.getElementById('editWrap').style.display  = mgr?'':'none';
+  };
+  roleSel.onchange=sync; sync();
+  document.getElementById('uSave').onclick=async()=>{
+    const pin=document.getElementById('uPin').value;
+    const name=document.getElementById('uName').value.trim();
+    const username=document.getElementById('uUsername').value.trim().toLowerCase();
+    if(!name||!username){ alert('กรอกชื่อที่แสดงและชื่อผู้ใช้ให้ครบ'); return; }
+    if(!isEdit && pin.length<6){ alert('ผู้ใช้ใหม่ต้องตั้งรหัสผ่านอย่างน้อย 6 ตัวอักษร'); return; }
+    if(pin && pin.length<6){ alert('รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร'); return; }
+    const dup=Store.users.find(x=>String(x.username||'').toLowerCase()===username && String(x.id)!==String(o.id));
+    if(dup){ alert('ชื่อผู้ใช้นี้ซ้ำกับ: '+dup.name); return; }
+    const role=roleSel.value;
+    const scope=[...document.querySelectorAll('.scopeChk:checked')].map(c=>c.value);
+    if(role==='manager' && !scope.length){ alert('เลือกโรงแรมที่ผู้จัดการคนนี้ดูได้อย่างน้อย 1 แห่ง'); return; }
+    try{
+      if(USE_CLOUD){
+        const {error}=await sb.rpc('app_save_user',{
+          p_id:o.id||null, p_username:username, p_name:name, p_role:role,
+          p_scope_codes: role==='manager'?scope:[],
+          p_can_see_overview:document.getElementById('uOverview').checked,
+          p_can_edit: role==='manager'?document.getElementById('uEdit').checked:true,
+          p_pin: pin||null});
+        if(error) throw prettyDbError(error);
+      }
+      closeModal(); toast('บันทึกแล้ว'); render();
+    }catch(e){ alert('บันทึกไม่สำเร็จ: '+e.message); }
+  };
+}
+
+/* ============================================================
+   ประวัติการแก้ไขตัวเลข (เจ้าของเท่านั้น)
+   ============================================================ */
+async function renderAudit(v){
+  const seq = RENDER_SEQ;
+  const head = n => `<div class="page-header" style="background:linear-gradient(135deg,#334155,#1f2937);color:#fff">
+    <div class="eyebrow">ตรวจสอบย้อนหลัง</div><h1>ประวัติการแก้ไขตัวเลข</h1>
+    <p>บันทึกอัตโนมัติทุกครั้งที่มีการเพิ่ม แก้ไข หรือลบข้อมูล P&amp;L${n==null?'':' · แสดง '+n+' รายการล่าสุด'}</p></div>`;
+  if(!USE_CLOUD){
+    v.innerHTML = head() + '<div class="panel"><div class="empty">โหมดตัวอย่าง (LOCAL) ไม่มีการบันทึกประวัติ</div></div>'; return; }
+  v.innerHTML = head() + '<div class="panel"><div class="empty">กำลังโหลด…</div></div>';
+  let rows=[];
+  try{ const {data,error}=await sb.rpc('app_audit',{p_limit:300}); if(error) throw prettyDbError(error); rows=data||[]; }
+  catch(e){ if(seq!==RENDER_SEQ) return;
+    v.innerHTML = head() + `<div class="panel"><div class="empty">โหลดประวัติไม่สำเร็จ: ${esc(e.message)}</div></div>`; return; }
+  if(seq!==RENDER_SEQ) return;
+
+  let h = head(rows.length);
+  h+='<div class="panel"><div class="table-scroll"><table class="data"><thead><tr>'+
+     '<th class="lbl">เวลา</th><th class="lbl">ผู้แก้ไข</th><th class="lbl">การกระทำ</th>'+
+     '<th class="lbl">โรงแรม</th><th>ปี</th><th>เดือน</th><th class="lbl">สิ่งที่เปลี่ยน</th></tr></thead><tbody>';
+  if(!rows.length) h+='<tr><td class="lbl" colspan="7">ยังไม่มีประวัติ</td></tr>';
+  const act={INSERT:'เพิ่มใหม่',UPDATE:'แก้ไข',DELETE:'ลบ'};
+  rows.forEach(r=>{
+    const changed = r.changed || {};
+    const items = Object.keys(changed).filter(k=>NUM_KEYS.includes(k)).slice(0,6)
+      .map(k=>`${LABEL[k]||k}: ${fmt(changed[k][0])} → ${fmt(changed[k][1])}`).join(' · ');
+    const more = Object.keys(changed).filter(k=>NUM_KEYS.includes(k)).length - 6;
+    h+=`<tr><td class="lbl">${esc(new Date(r.at).toLocaleString('th-TH'))}</td>
+      <td class="lbl">${esc(r.actor_name)}</td><td class="lbl">${esc(act[r.action]||r.action)}</td>
+      <td class="lbl">${esc(r.hotel||'–')}</td><td>${r.year??'–'}</td><td>${r.month??'–'}</td>
+      <td class="lbl" style="white-space:normal;max-width:520px;font-weight:400">${esc(items)||'–'}${more>0?` … อีก ${more} รายการ`:''}</td></tr>`;
+  });
+  h+='</tbody></table></div></div>';
+  v.innerHTML=h;
+}
+
+/* ============================================================
+   MODAL + BOOT
+   ============================================================ */
+function showModal(html){
+  document.getElementById('modalHost').innerHTML =
+    `<div class="modal-bg"><div class="modal" role="dialog" aria-modal="true">${html}</div></div>`;
+  const bg=document.querySelector('.modal-bg');
+  bg.addEventListener('click', e=>{ if(e.target===bg) closeModal(); });
+  const first=document.querySelector('.modal input,.modal select,.modal textarea'); if(first) first.focus();
+}
+function closeModal(){ document.getElementById('modalHost').innerHTML=''; }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+
+document.getElementById('loginBtn').addEventListener('click', doLogin);
+document.getElementById('btnLogout').addEventListener('click', ()=>logout());
+document.getElementById('pin').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+document.getElementById('uname').addEventListener('keydown', e=>{
+  if(e.key==='Enter') document.getElementById('pin').focus(); });
+
+(function boot(){
+  const hint=document.getElementById('loginHint');
+  const missing=[];
+  if(!LIB.chart) missing.push('Chart.js (กราฟ)');
+  if(!LIB.xlsx)  missing.push('SheetJS (Excel)');
+  if(!LIB.supabase && USE_CLOUD) missing.push('Supabase (ฐานข้อมูล)');
+
+  if(BOOT_ERROR){ setLoginMsg(BOOT_ERROR); }
+  else if(missing.length){
+    setLoginMsg('⚠ โหลดไลบรารีไม่ครบ: '+missing.join(', ')+
+      ' — บางฟังก์ชันจะใช้ไม่ได้ ตรวจสอบอินเทอร์เน็ตหรือใช้ไฟล์ในโฟลเดอร์ assets/');
+  }
+
+  hint.innerHTML = USE_CLOUD
+    ? '🔒 เชื่อมต่อฐานข้อมูลคลาวด์แล้ว · กรอกชื่อผู้ใช้และรหัสผ่านเพื่อเข้าใช้งาน<br>' +
+      'กรอกรหัสผิดเกิน 5 ครั้ง บัญชีจะถูกล็อก 15 นาที'
+    : '⚙️ โหมดตัวอย่าง (LOCAL) — ยังไม่ได้ตั้งค่า Supabase<br>' +
+      '<b>ตัวเลขที่เห็นเป็นข้อมูลสมมติ ไม่ใช่ผลประกอบการจริง</b><br>' +
+      'ทดลองใช้: <b>owner / demo1234</b> (แก้ไขได้) หรือ <b>view / demo1234</b> (ดูอย่างเดียว)';
+
+  if(!USE_CLOUD){ try{ loadAll(); }catch(e){} }
+  document.getElementById('uname').focus();
+})();
+</script>
+</body>
+</html>
