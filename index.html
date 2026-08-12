@@ -152,6 +152,17 @@ input,select{font-family:inherit;}
 .kpi-change.neutral{color:var(--neutral);background:var(--neu-bg);}
 .kpi-flag{display:block;font-size:11px;color:#8a6d1b;margin-top:7px;line-height:1.45;}
 
+/* ---------- SALES-ONLY VIEW ---------- */
+.sales-kpi{display:grid;grid-template-columns:repeat(2,minmax(260px,1fr));gap:18px;margin-bottom:20px;}
+.sales-kpi .kpi-card{padding:24px 26px;}
+.sales-kpi .kpi-value{font-size:clamp(30px,2.8vw,44px);}
+.sales-kpi .kpi-card.fb::before{background:var(--gold);}
+.sales-kpi .kpi-card.fb{background:linear-gradient(180deg,#fffdf7,#fbf7eb);}
+.sales-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px;}
+.sales-meta span{font-size:11.5px;font-weight:600;color:var(--ink-soft);background:#f0f3f8;
+  border-radius:20px;padding:4px 10px;}
+@media(max-width:640px){.sales-kpi{grid-template-columns:1fr;}}
+
 /* ---------- PANELS / CHARTS ---------- */
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-bottom:18px;}
@@ -577,9 +588,45 @@ function mkChart(id,cfg){
   const c=document.getElementById(id); if(!c) return;
   if(!LIB.chart){ const box=c.parentElement;
     box.innerHTML='<div class="chart-missing">ไม่สามารถแสดงกราฟได้<br>(โหลดไลบรารี Chart.js ไม่สำเร็จ)</div>'; return; }
+  cfg.options=cfg.options||{};
+  cfg.options.layout=cfg.options.layout||{};
+  cfg.options.layout.padding={top:26,...(cfg.options.layout.padding||{})};
+  cfg.options.plugins=cfg.options.plugins||{};
+  cfg.options.plugins.tooltip={...(cfg.options.plugins.tooltip||{}),enabled:false};
+  cfg.plugins=cfg.plugins||[];
+  if(!cfg.plugins.some(p=>p&&p.id===SALES_VALUE_LABELS.id)) cfg.plugins.push(SALES_VALUE_LABELS);
   try{ const ch=new Chart(c,cfg); charts.push(ch); return ch; }
   catch(e){ console.error('chart',id,e); }
 }
+
+/* ตัวเลขบนกราฟยอดขาย: แสดงค้างไว้เสมอ และไม่ใช้กล่องข้อมูลเมื่อชี้เมาส์ */
+const SALES_VALUE_LABELS = {
+  id:'salesValueLabels',
+  afterDatasetsDraw(chart){
+    const ctx=chart.ctx;
+    ctx.save();
+    ctx.font="600 10px 'Sarabun','Inter',sans-serif";
+    ctx.textAlign='center'; ctx.textBaseline='bottom';
+    chart.data.datasets.forEach((ds,di)=>{
+      const meta=chart.getDatasetMeta(di); if(meta.hidden) return;
+      meta.data.forEach((point,i)=>{
+        const raw=ds.data[i];
+        const value=typeof raw==='object' && raw!==null ? (raw.y??raw.x) : raw;
+        if(value==null || !isFinite(value) || value===0) return;
+        const negative=Number(value)<0, n=Math.abs(Number(value));
+        const numberLabel=n>=1e6 ? (n/1e6).toFixed(2)+' ล.'
+          : n>=1e3 ? Math.round(n/1e3).toLocaleString('th-TH')+' พัน'
+          : Math.round(n).toLocaleString('th-TH');
+        const label=(negative?'−':'')+numberLabel;
+        const p=point.tooltipPosition();
+        const y=Math.max(chart.chartArea.top+12,p.y-7);
+        ctx.lineWidth=3; ctx.strokeStyle='rgba(255,255,255,.94)'; ctx.strokeText(label,p.x,y);
+        ctx.fillStyle='#102033'; ctx.fillText(label,p.x,y);
+      });
+    });
+    ctx.restore();
+  }
+};
 
 function hotelByCode(code){ return Store.hotels.find(h=>h.code===code); }
 function hotelById(id){ return Store.hotels.find(h=>h.id===id); }
@@ -611,7 +658,7 @@ function rangeLabel(months){
      (จำนวนห้องคืน = รายได้ห้องพัก ÷ RevPAR) ถ้าข้อมูลครบ
    - ค่าคอมมิชชั่น รวมเฉพาะเดือนที่มีตัวเลขครบทั้งสองปี
    ============================================================ */
-let YB = null, YC = null, PERIOD = 'full', COMPARE = 'ytd';
+let YB = null, YC = null, PERIOD = 'full', COMPARE = 'ytd', SALES_YEAR = null;
 
 function rowOf(hid,y,m){ return Store.pl.find(x=>x.hotel_id===hid&&x.year===y&&x.month===m); }
 
@@ -799,6 +846,7 @@ function enterApp(){
   const yrs = availableYears();
   YC = yrs[yrs.length-1];
   YB = yrs.length>1 ? yrs[yrs.length-2] : yrs[0]-1;
+  SALES_YEAR = YC;
   PERIOD = pickDefaultPeriod();
 
   buildModeTabs();
@@ -862,7 +910,7 @@ function stopKeepAlive(){ if(keepAlive) clearInterval(keepAlive); keepAlive=null
 
 function buildModeTabs(){
   const host=document.getElementById('modeTabs'); host.innerHTML='';
-  const tabs=[['dash','แดชบอร์ด']];
+  const tabs=[['dash','แดชบอร์ด'],['sales','ยอดขาย']];
   if(canEdit())  tabs.push(['entry','กรอกข้อมูล']);
   if(isOwner()){ tabs.push(['hotels','จัดการโรงแรม']); tabs.push(['users','ผู้ใช้งาน']); tabs.push(['audit','ประวัติการแก้ไข']); }
   tabs.forEach(([k,l])=>{ const b=el(`<button type="button" data-m="${k}">${esc(l)}</button>`);
@@ -882,6 +930,7 @@ function render(){
   if(MODE==='entry'  && !canEdit())  MODE='dash';
   if((MODE==='hotels'||MODE==='users'||MODE==='audit') && !isOwner()) MODE='dash';
   if(MODE==='dash')   return renderDash(v);
+  if(MODE==='sales')  return renderSales(v);
   if(MODE==='entry')  return renderEntry(v);
   if(MODE==='hotels') return renderHotelsAdmin(v);
   if(MODE==='users')  return renderUsersAdmin(v);
@@ -938,6 +987,138 @@ function hotelTabs(){
 }
 function wireHotelTabs(){
   document.querySelectorAll('.hotel-tabs button').forEach(b=>b.onclick=()=>{CURRENT_HOTEL=b.dataset.h;render();});
+}
+
+/* ============================================================
+   SALES VIEW — ดูยอดขายของปีเดียว ไม่แสดงต้นทุนหรือกำไร
+   ============================================================ */
+function salesControlBar(){
+  const yrs=availableYears();
+  const ids=CURRENT_HOTEL==='__ov__' ? visibleHotels().map(h=>h.id) : [hotelByCode(CURRENT_HOTEL)?.id].filter(Boolean);
+  const opts=yrs.map(y=>{
+    const complete=[1,2,3,4,5,6,7,8,9,10,11,12].filter(m=>ids.length&&ids.every(id=>!!rowOf(id,y,m))).length;
+    const detail=complete===12 ? 'เต็มปี (ม.ค.–ธ.ค.)' : `ข้อมูลครบ ${complete}/12 เดือน`;
+    return `<option value="${y}" ${y===SALES_YEAR?'selected':''}>${y} — ${detail}</option>`;
+  }).join('');
+  return `<div class="controls noprint">
+    <div class="ctl"><label for="salesYear">ปีที่ต้องการดู</label><select id="salesYear">${opts}</select></div>
+    <div class="ctl" style="align-self:center"><span style="font-size:12.5px;color:var(--ink-soft)">แสดงยอดขายปีเดียว · ไม่มีการเปรียบเทียบกำไรหรือต้นทุน</span></div>
+    <div class="spacer"></div>
+    <div class="ctl"><label>&nbsp;</label><button type="button" class="btn btn-soft btn-sm" id="btnPrint">🖨 พิมพ์ / บันทึก PDF</button></div>
+  </div>`;
+}
+function wireSalesControls(){
+  const y=document.getElementById('salesYear');
+  if(y) y.onchange=e=>{SALES_YEAR=+e.target.value;render();};
+  const pr=document.getElementById('btnPrint'); if(pr) pr.onclick=()=>window.print();
+}
+function salesRows(hotelIds, year){
+  return Store.pl.filter(r=>hotelIds.includes(r.hotel_id)&&r.year===year&&r.month>=1&&r.month<=12);
+}
+function salesAgg(hotelIds, year){
+  const rows=salesRows(hotelIds,year);
+  const months=[...new Set(rows.map(r=>r.month))].sort((a,b)=>a-b);
+  const completeMonths=months.filter(m=>hotelIds.every(id=>!!rowOf(id,year,m)));
+  const partialMonths=months.filter(m=>!completeMonths.includes(m));
+  return {
+    total:rows.reduce((s,r)=>s+(r.total_rev||0),0),
+    fb:rows.reduce((s,r)=>s+(r.fb_rev||0),0),
+    months, completeMonths, partialMonths, rows, hasData:rows.length>0
+  };
+}
+function salesKpis(a){
+  const share=a.total ? a.fb/a.total*100 : null;
+  const monthText=a.completeMonths.length===12 ? 'เต็มปี · ม.ค.–ธ.ค. (12 เดือน)'
+    : a.months.length ? `${a.months.length} เดือน · ${rangeLabel(a.months)}` : 'ยังไม่มีข้อมูล';
+  return `<div class="sales-kpi">
+    <div class="kpi-card hl"><div class="kpi-label">รายได้รวม</div>
+      <div class="kpi-value">฿${fmtM(a.total)}</div><div class="kpi-sub">ยอดสะสมปี ${SALES_YEAR}</div>
+      <div class="sales-meta"><span>${esc(monthText)}</span></div></div>
+    <div class="kpi-card fb"><div class="kpi-label">รายได้อาหารและเครื่องดื่ม</div>
+      <div class="kpi-value">฿${fmtM(a.fb)}</div><div class="kpi-sub">${share==null?'ยังคำนวณสัดส่วนไม่ได้':share.toFixed(1)+'% ของรายได้รวม'}</div>
+      <div class="sales-meta"><span>${esc(monthText)}</span></div></div>
+  </div>`;
+}
+function salesDataNote(a){
+  if(!a.hasData) return '';
+  const missing=[1,2,3,4,5,6,7,8,9,10,11,12].filter(m=>!a.months.includes(m));
+  const notes=[];
+  if(missing.length) notes.push(`ยังไม่มีข้อมูล: <b>${esc(rangeLabel(missing))}</b>`);
+  if(a.partialMonths.length) notes.push(`ข้อมูลบางโรงแรมยังไม่ครบ: <b>${esc(rangeLabel(a.partialMonths))}</b>`);
+  if(!notes.length) notes.push('มีข้อมูลครบ 12 เดือน');
+  return `<div class="scope-note${a.partialMonths.length?' warn':''}"><span>${a.partialMonths.length?'⚠':'ℹ'}</span><span>ยอดสะสมจากเดือนที่มีข้อมูลในปี ${SALES_YEAR}: <b>${esc(rangeLabel(a.months))}</b> · ${notes.join(' · ')}</span></div>`;
+}
+function renderSales(v){
+  v.innerHTML=salesControlBar()+hotelTabs()+'<div id="salesBody"></div>';
+  wireSalesControls(); wireHotelTabs();
+  const body=document.getElementById('salesBody');
+  if(CURRENT_HOTEL==='__ov__') renderSalesOverview(body);
+  else renderSalesHotel(body,hotelByCode(CURRENT_HOTEL));
+}
+function renderSalesOverview(body){
+  document.documentElement.style.setProperty('--accent','#1f4e5f');
+  const all=visibleHotels();
+  const rows=all.map(h=>({h,a:salesAgg([h.id],SALES_YEAR)})).filter(x=>x.a.hasData);
+  const group=salesAgg(all.map(h=>h.id),SALES_YEAR);
+  const title=ME.role==='manager'?'ยอดขายโรงแรมที่คุณดูแล':'ยอดขายรวมกลุ่มโรงแรม PLAAI';
+  let h=`<div class="page-header" style="background:linear-gradient(135deg,#0f2c44,#1f4e5f);color:#fff">
+    <div class="eyebrow">มุมมองสำหรับคุยกับฝ่ายขาย · ปี ${SALES_YEAR}</div><h1>${esc(title)}</h1>
+    <p>ดูเฉพาะรายได้รวม และรายได้จากอาหารและเครื่องดื่ม</p></div>`;
+  if(!group.hasData){
+    h+=`<div class="panel"><div class="empty">ยังไม่มีข้อมูลยอดขายปี ${SALES_YEAR}</div></div>`;
+    body.innerHTML=h; return;
+  }
+  h+=salesDataNote(group)+salesKpis(group);
+  h+=`<div class="grid2">
+    <div class="panel"><h3>รายได้รวมรายเดือน</h3><div class="cap">แยกตามโรงแรม · ปี ${SALES_YEAR}</div><div class="chart-box"><canvas id="salesTotalChart"></canvas></div></div>
+    <div class="panel"><h3>รายได้อาหารและเครื่องดื่มรายเดือน</h3><div class="cap">แยกตามโรงแรม · ปี ${SALES_YEAR}</div><div class="chart-box"><canvas id="salesFbChart"></canvas></div></div>
+  </div>`;
+  h+=`<div class="panel"><h3>สรุปยอดขายรายโรงแรม</h3><div class="cap">ยอดสะสมจากเดือนที่มีข้อมูล · ปี ${SALES_YEAR} · หน่วย: บาท</div>
+    <div class="table-scroll"><table class="data"><thead><tr><th class="lbl">โรงแรม</th><th>รายได้รวม</th><th>อาหารและเครื่องดื่ม</th><th>สัดส่วน F&amp;B</th><th>เดือนที่มีข้อมูล</th></tr></thead><tbody>`;
+  rows.forEach(({h:ht,a})=>{
+    const share=a.total?a.fb/a.total*100:null;
+    h+=`<tr><td class="lbl"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${esc(ht.color)};margin-right:7px"></span>${esc(ht.name)}</td>
+      <td>${fmt(a.total)}</td><td>${fmt(a.fb)}</td><td>${share==null?'–':share.toFixed(1)+'%'}</td><td>${a.months.length}</td></tr>`;
+  });
+  const share=group.total?group.fb/group.total*100:null;
+  h+=`</tbody><tfoot><tr><td class="lbl">รวมทุกโรงแรม</td><td>${fmt(group.total)}</td><td>${fmt(group.fb)}</td><td>${share==null?'–':share.toFixed(1)+'%'}</td><td>${group.months.length}</td></tr></tfoot></table></div></div>`;
+  body.innerHTML=h;
+  const groupSeries=key=>[1,2,3,4,5,6,7,8,9,10,11,12].map(m=>{
+    const monthRows=all.map(ht=>rowOf(ht.id,SALES_YEAR,m)).filter(Boolean);
+    return monthRows.length ? monthRows.reduce((s,r)=>s+(r[key]||0),0) : null;
+  });
+  const opts={responsive:true,maintainAspectRatio:false,layout:{padding:{top:26}},
+    plugins:{legend:{display:false},tooltip:{enabled:false}},
+    scales:{y:{beginAtZero:true,ticks:{callback:v=>fmtM(v)}}}};
+  mkChart('salesTotalChart',{type:'bar',plugins:[SALES_VALUE_LABELS],data:{labels:MONTHS_TH,datasets:[{
+    label:'รายได้รวม',data:groupSeries('total_rev'),backgroundColor:'#1f4e5f',borderRadius:5}]},options:opts});
+  mkChart('salesFbChart',{type:'bar',plugins:[SALES_VALUE_LABELS],data:{labels:MONTHS_TH,datasets:[{
+    label:'อาหารและเครื่องดื่ม',data:groupSeries('fb_rev'),backgroundColor:'#b8912f',borderRadius:5}]},options:opts});
+}
+function renderSalesHotel(body,ht){
+  if(!ht){body.innerHTML='<div class="panel"><div class="empty">ไม่พบโรงแรมนี้ หรือคุณไม่มีสิทธิ์เข้าถึง</div></div>';return;}
+  document.documentElement.style.setProperty('--accent',ht.color);
+  const a=salesAgg([ht.id],SALES_YEAR), fg=textOn(ht.color);
+  let h=`<div class="page-header" style="background:linear-gradient(135deg,${esc(ht.color)},${esc(shade(ht.color,-28))});color:${fg}">
+    <div class="eyebrow">ยอดขายรายโรงแรม · ปี ${SALES_YEAR}</div><h1>${esc(ht.name)}</h1>
+    <p>ดูเฉพาะรายได้รวม และรายได้จากอาหารและเครื่องดื่ม</p></div>`;
+  if(!a.hasData){h+=`<div class="panel"><div class="empty">ยังไม่มีข้อมูลยอดขายปี ${SALES_YEAR}</div></div>`;body.innerHTML=h;return;}
+  h+=salesDataNote(a)+salesKpis(a);
+  h+=`<div class="panel" style="margin-bottom:18px"><h3>ยอดขายรายเดือน</h3><div class="cap">รายได้รวม เทียบกับรายได้อาหารและเครื่องดื่ม · ปี ${SALES_YEAR}</div><div class="chart-box tall"><canvas id="salesHotelChart"></canvas></div></div>`;
+  h+=`<div class="panel"><h3>ตารางยอดขายรายเดือน</h3><div class="cap">ปี ${SALES_YEAR} · หน่วย: บาท</div><div class="table-scroll"><table class="data">
+    <thead><tr><th class="lbl">เดือน</th><th>รายได้รวม</th><th>อาหารและเครื่องดื่ม</th><th>สัดส่วน F&amp;B</th></tr></thead><tbody>`;
+  [1,2,3,4,5,6,7,8,9,10,11,12].forEach(m=>{const r=rowOf(ht.id,SALES_YEAR,m);const share=r&&r.total_rev?r.fb_rev/r.total_rev*100:null;
+    h+=`<tr><td class="lbl">${MONTHS_TH[m-1]}</td><td class="${r?'':'na'}">${r?fmt(r.total_rev):'–'}</td><td class="${r?'':'na'}">${r?fmt(r.fb_rev):'–'}</td><td class="${r?'':'na'}">${share==null?'–':share.toFixed(1)+'%'}</td></tr>`;});
+  const share=a.total?a.fb/a.total*100:null;
+  h+=`</tbody><tfoot><tr><td class="lbl">รวมปี ${SALES_YEAR}</td><td>${fmt(a.total)}</td><td>${fmt(a.fb)}</td><td>${share==null?'–':share.toFixed(1)+'%'}</td></tr></tfoot></table></div></div>`;
+  body.innerHTML=h;
+  const vals=key=>[1,2,3,4,5,6,7,8,9,10,11,12].map(m=>{const r=rowOf(ht.id,SALES_YEAR,m);return r?r[key]:null;});
+  mkChart('salesHotelChart',{type:'bar',plugins:[SALES_VALUE_LABELS],data:{labels:MONTHS_TH,datasets:[
+    {label:'รายได้รวม',data:vals('total_rev'),backgroundColor:ht.color,borderRadius:4},
+    {label:'อาหารและเครื่องดื่ม',data:vals('fb_rev'),backgroundColor:'#b8912f',borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:26}},
+      plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8}},tooltip:{enabled:false}},
+      scales:{y:{beginAtZero:true,ticks:{callback:v=>fmtM(v)}}}}});
 }
 
 /* ============================================================
