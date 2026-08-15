@@ -359,11 +359,11 @@ const LOCAL_USERS = [
    ============================================================ */
 const GROUPS = [
   {t:'รายได้', keys:['rooms_rev','fb_rev','other_rev','total_rev']},
-  {t:'ค่าใช้จ่ายดำเนินงาน', keys:['rooms_exp','fb_exp','other_dept_exp','ag_exp','sale_exp','maint_exp','util_exp','total_exp']},
+  {t:'ค่าใช้จ่ายดำเนินงาน', keys:['rooms_exp','commission','fb_exp','other_dept_exp','ag_exp','sale_exp','maint_exp','util_exp','total_exp']},
   {t:'กำไรขั้นต้นจากการดำเนินงาน', keys:['gop']},
   {t:'รายการใต้ GOP', keys:['rent','depreciation','interest','mgmt_fee','other_below','below_gop']},
   {t:'บรรทัดสุดท้าย', keys:['net_profit']},
-  {t:'ตัวชี้วัดการดำเนินงาน', keys:['occ','adr','revpar','commission']},
+  {t:'ตัวชี้วัดการดำเนินงาน', keys:['occ','adr','revpar']},
 ];
 const LABEL = {
   rooms_rev:'รายได้ห้องพัก', fb_rev:'รายได้อาหาร&เครื่องดื่ม', other_rev:'รายได้อื่น', total_rev:'รายได้รวม',
@@ -371,7 +371,7 @@ const LABEL = {
   ag_exp:'ค่าบริหารทั่วไป (A&G)', sale_exp:'ค่าการขาย&การตลาด', maint_exp:'ค่าซ่อมบำรุง', util_exp:'ค่าสาธารณูปโภค',
   total_exp:'ค่าใช้จ่ายดำเนินงานรวม', gop:'GOP', rent:'ค่าเช่าอาคาร/ที่ดิน', depreciation:'ค่าเสื่อมราคา',
   interest:'ดอกเบี้ยจ่าย', mgmt_fee:'ค่าบริหารจัดการ', other_below:'รายการอื่นใต้ GOP', below_gop:'รวมรายการใต้ GOP',
-  net_profit:'กำไรสุทธิ', occ:'อัตราเข้าพัก %', adr:'ADR', revpar:'RevPAR', commission:'ค่าคอมมิชชั่น OTA'
+  net_profit:'กำไรสุทธิ', occ:'อัตราเข้าพัก %', adr:'ADR', revpar:'RevPAR', commission:'↳ ในนั้นคือค่านายหน้า ส่วนแบ่งการขาย'
 };
 const NUM_KEYS = ['rooms_rev','fb_rev','other_rev','total_rev','rooms_exp','fb_exp','other_dept_exp','ag_exp',
   'sale_exp','maint_exp','util_exp','total_exp','gop','rent','depreciation','interest','mgmt_fee','other_below',
@@ -393,7 +393,7 @@ const TH_HEADERS = {
   total_exp:'ค่าใช้จ่ายดำเนินงานรวม', gop:'GOP (กำไรขั้นต้นจากการดำเนินงาน)', rent:'ค่าเช่าอาคาร/ที่ดิน',
   depreciation:'ค่าเสื่อมราคา', interest:'ดอกเบี้ยจ่าย', mgmt_fee:'ค่าบริหารจัดการ', other_below:'รายการอื่นใต้ GOP',
   below_gop:'รวมรายการใต้ GOP', net_profit:'กำไรสุทธิ', occ:'อัตราเข้าพัก %', adr:'ADR (ราคาห้องเฉลี่ย)',
-  revpar:'RevPAR', commission:'ค่าคอมมิชชั่น OTA'
+  revpar:'RevPAR', commission:'ค่านายหน้า ส่วนแบ่งการขาย'
 };
 const MONTHS_TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
 const PERIODS = {
@@ -756,7 +756,7 @@ function scopeNote(agg, hotelIds){
     cls = ' warn';
   }
   if(agg.commMonths && agg.commMonths.length && agg.commMonths.length < agg.months.length){
-    txt += ` · ค่าคอมมิชชั่น OTA คิดจาก ${esc(rangeLabel(agg.commMonths))} เท่านั้น`;
+    txt += ` · ค่านายหน้า ส่วนแบ่งการขาย คิดจาก ${esc(rangeLabel(agg.commMonths))} เท่านั้น`;
   }
   txt += agg.opsWeighted
     ? ' · Occ/ADR/RevPAR เป็นค่าเฉลี่ยถ่วงน้ำหนักตามจำนวนห้องคืน'
@@ -1427,13 +1427,14 @@ function plTable(ht, months, A){
   h+='</tbody></table></div>';
 
   const notes=[];
+  notes.push('<b>↳ ในนั้นคือค่านายหน้า ส่วนแบ่งการขาย</b> เป็นรายการย่อยที่ <b>รวมอยู่ในต้นทุนห้องพักด้านบนแล้ว</b> ไม่ใช่ยอดเพิ่ม แสดงแยกไว้เพื่อดูสัดส่วนเฉยๆ (บันทึกไว้ในแผนก Front Office เพราะผูกกับรายได้ห้องพักโดยตรง) ส่วน <b>ค่าการขาย&amp;การตลาด</b> เป็นค่าใช้จ่ายของแผนกขายทั้งแผนก (เงินเดือนทีมขาย + โฆษณา + การตลาด) คนละก้อนกัน ไม่ทับซ้อนกัน');
   notes.push(`คอลัมน์ <b>รวม/เฉลี่ย</b> คิดจากเดือนที่มีข้อมูลครบทั้งสองปีเท่านั้น (${esc(rangeLabel(A.months))})`);
   notes.push('อัตราเข้าพัก / ADR / RevPAR เป็น <b>ค่าเฉลี่ย</b> ไม่ใช่ผลรวม' +
              (A.opsWeighted?' (ถ่วงน้ำหนักตามจำนวนห้องคืน)':''));
   if(months.some(m=>!A.months.includes(m))) notes.push('เดือนที่มีเครื่องหมาย * ไม่ถูกนำมารวม เพราะข้อมูลไม่ครบทั้งสองปี');
   if(A.commMonths && A.commMonths.length && A.commMonths.length<A.months.length)
-    notes.push(`ค่าคอมมิชชั่น OTA คิดจาก ${esc(rangeLabel(A.commMonths))} เท่านั้น (เดือนอื่นไม่มีข้อมูลอย่างน้อยหนึ่งปี)`);
-  else if(A.commMonths && !A.commMonths.length) notes.push('ค่าคอมมิชชั่น OTA ยังไม่มีข้อมูลที่เทียบกันได้');
+    notes.push(`ค่านายหน้า ส่วนแบ่งการขาย คิดจาก ${esc(rangeLabel(A.commMonths))} เท่านั้น (เดือนอื่นไม่มีข้อมูลอย่างน้อยหนึ่งปี)`);
+  else if(A.commMonths && !A.commMonths.length) notes.push('ค่านายหน้า ส่วนแบ่งการขาย ยังไม่มีข้อมูลที่เทียบกันได้');
   h+=`<div class="tbl-note">${notes.map(n=>'• '+n).join('<br>')}</div>`;
   return h;
 }
@@ -1480,7 +1481,7 @@ function insightModal(o){
   showModal(`<h3>${o.id?'แก้ไข':'เพิ่ม'}บทวิเคราะห์ / ความเห็น</h3>
     <div class="field"><label>ประเภท</label><select id="mKind">
       ${kinds.map(k=>`<option value="${k[0]}" ${o.kind===k[0]?'selected':''}>${k[1]}</option>`).join('')}</select></div>
-    <div class="field"><label>หัวข้อ</label><input id="mTitle" value="${esc(o.title)}" placeholder="เช่น GOP ลดลงจากค่าคอมมิชชั่น OTA"></div>
+    <div class="field"><label>หัวข้อ</label><input id="mTitle" value="${esc(o.title)}" placeholder="เช่น GOP ลดลงจากค่านายหน้า ส่วนแบ่งการขาย"></div>
     <div class="field"><label>รายละเอียด</label><textarea id="mBody" placeholder="พิมพ์ความเห็น/บทวิเคราะห์…">${esc(o.body)}</textarea></div>
     <div class="field"><label>ลำดับการแสดง (น้อยขึ้นก่อน)</label><input id="mOrder" type="number" value="${o.sort_order||10}"></div>
     <div class="field"><label>แสดงในปี</label><input id="mYear" type="number" value="${o.year||YC}"></div>
